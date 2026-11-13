@@ -1,0 +1,21 @@
+FOLDER MUSIK (OPSIONAL)
+=======================
+
+Game ini SUDAH punya 6 lagu bawaan yang dibuat oleh kode (musik prosedural, Web Audio API).
+Lagu-lagu itu dikarang secara real-time oleh game sendiri, jadi 100% bebas hak cipta.
+
+Jika ingin menambah lagu sendiri, gunakan HANYA musik gratis / bebas royalti, misalnya:
+  - Pixabay Music        https://pixabay.com/music/          (Pixabay Content License, tanpa atribusi wajib)
+  - Free Music Archive   https://freemusicarchive.org/        (pilih lisensi CC BY / CC0, cek tiap lagu)
+  - Incompetech          https://incompetech.com/music/       (CC BY 4.0 - WAJIB cantumkan kredit)
+  - YouTube Audio Library (unduh dari YouTube Studio; cek apakah butuh atribusi)
+
+Langkah:
+  1. Unduh file .mp3 lalu taruh di folder ini, misal: music/lagu1.mp3
+  2. Buka js/config.js, isi MUSIC_TRACKS, contoh:
+       MUSIC_TRACKS: [
+         { title: "Judul Lagu", artist: "Nama Artis", url: "music/lagu1.mp3", license: "Pixabay Content License" },
+       ],
+  3. Jika lisensinya CC BY, tulis kredit (judul, artis, lisensi, link) di halaman game / README.
+
+Selalu baca lisensi tiap lagu sebelum dipakai, terutama jika game akan dipublikasikan.
