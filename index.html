@@ -1,0 +1,310 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Neon Rush: Balap Jalanan Malam</title>
+<meta name="description" content="Game balap jalanan malam di browser: free roam, tuning, drift, drag, sirkuit dan sprint.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<!-- ============ LOADING ============ -->
+<div id="loading" class="screen show center">
+  <div class="logo">NEON<span>RUSH</span></div>
+  <div class="loadbar"><i id="loadbar"></i></div>
+  <p id="loadtxt">Menyalakan lampu kota…</p>
+</div>
+
+<!-- ============ LOGIN / DAFTAR ============ -->
+<div id="auth" class="screen center">
+  <div class="auth-wrap">
+    <div class="logo big">NEON<span>RUSH</span></div>
+    <p class="tag">Balap Jalanan Malam · Tuning · Drift · Drag</p>
+    <div class="panel auth-panel">
+      <div class="tabs" id="auth-tabs">
+        <button data-tab="login" class="active">MASUK</button>
+        <button data-tab="register">DAFTAR</button>
+      </div>
+      <label>Username <input id="au-user" maxlength="16" autocomplete="username" spellcheck="false"></label>
+      <label>Password <input id="au-pass" type="password" autocomplete="current-password"></label>
+      <label id="au-pass2-wrap" class="hidden">Ulangi Password <input id="au-pass2" type="password" autocomplete="new-password"></label>
+      <button id="au-go" class="btn primary">MASUK</button>
+      <button id="au-guest" class="btn ghost">Main sebagai Tamu (tanpa akun)</button>
+      <button id="au-quit" class="btn ghost danger">Keluar Game</button>
+      <p id="au-msg" class="msg"></p>
+      <p id="au-mode" class="mode"></p>
+    </div>
+  </div>
+</div>
+
+<!-- ============ PILIH MOBIL PERTAMA ============ -->
+<div id="starter" class="screen">
+  <div class="starter-top">
+    <h1>PILIH MOBIL PERTAMAMU</h1>
+    <p>Gratis! Mobil lain bisa dibeli nanti di Dealer.</p>
+  </div>
+  <div class="panel starter-card" id="st-card"></div>
+  <div class="starter-act">
+    <button class="btn round" id="st-prev">◀</button>
+    <button id="st-pick" class="btn primary big">AMBIL MOBIL INI</button>
+    <button class="btn round" id="st-next">▶</button>
+  </div>
+</div>
+
+<!-- ============ HUD ============ -->
+<div id="hud" class="hidden">
+  <div id="hud-tl">
+    <div id="hud-roam">
+      <div class="hud-money" id="hud-money">$0</div>
+      <div class="hud-rep"><span id="hud-rep">0</span> REP</div>
+      <div class="hud-district" id="hud-district"></div>
+    </div>
+    <div id="hud-race" class="hidden">
+      <div class="race-pos"><b id="hud-pos">1</b><small id="hud-posof">/4</small></div>
+      <div class="race-line"><span>PUTARAN</span><b id="hud-lap">1/2</b></div>
+      <div class="race-line"><span>WAKTU</span><b id="hud-time">00:00.00</b></div>
+      <div class="race-line" id="hud-best-wrap"><span>TERBAIK</span><b id="hud-best">--</b></div>
+      <div class="race-board" id="hud-board"></div>
+    </div>
+  </div>
+  <div id="hud-tr">
+    <canvas id="minimap" width="220" height="220"></canvas>
+    <div class="music-now" id="hud-music"></div>
+  </div>
+  <div id="gps"><div id="gps-arrow">▲</div><small id="gps-dist"></small></div>
+  <div id="drift-box" class="hidden">
+    <div class="drift-total"><small>SKOR DRIFT</small><b id="drift-total">0</b></div>
+    <div class="drift-chain" id="drift-chain"></div>
+  </div>
+  <div id="speedo">
+    <canvas id="speedo-c" width="240" height="240"></canvas>
+    <div id="spd">0</div><div id="spd-u">KM/J</div>
+    <div id="gear">N</div>
+    <div id="shiftlight"></div>
+    <div class="nos"><i id="nos-bar"></i><span>NOS</span></div>
+  </div>
+  <div id="banner" class="hidden"><b id="banner-t"></b><small id="banner-s"></small></div>
+  <div id="countdown"></div>
+  <div id="pop"></div>
+  <div id="wrongway" class="hidden">⚠ ARAH SALAH!</div>
+  <div id="prompt" class="hidden"></div>
+  <div id="fps" class="hidden"></div>
+  <button id="btn-menu" class="btn round small" title="Menu (Esc)">☰</button>
+</div>
+
+<!-- ============ KONTROL SENTUH ============ -->
+<div id="touch" class="hidden">
+  <div class="t-left"><button data-k="left">◀</button><button data-k="right">▶</button></div>
+  <div class="t-right">
+    <button data-k="nitro" class="t-nos">NOS</button>
+    <button data-k="hand" class="t-hb">REM<br>TANGAN</button>
+    <button data-k="brake" class="t-brake">REM</button>
+    <button data-k="gas" class="t-gas">GAS</button>
+  </div>
+  <button data-k="act" class="t-act">E</button>
+</div>
+
+<!-- ============ MENU JEDA ============ -->
+<div id="pause" class="screen dim center">
+  <div class="panel menu-panel">
+    <h2 id="pause-title">JEDA</h2>
+    <div id="pause-btns" class="menu-btns"></div>
+    <p class="small muted" id="pause-user"></p>
+  </div>
+</div>
+
+<!-- ============ INFO EVENT ============ -->
+<div id="eventinfo" class="screen dim center">
+  <div class="panel event-panel" id="event-panel"></div>
+</div>
+
+<!-- ============ GARASI ============ -->
+<div id="garage" class="screen">
+  <div class="g-top">
+    <div class="g-title">GARASI <span id="g-sub">NEOPOLIS</span></div>
+    <div class="g-wallet"><b id="g-money">$0</b><span><i id="g-rep">0</i> REP</span></div>
+  </div>
+  <div class="g-left panel">
+    <div class="tabs" id="g-tabs">
+      <button data-tab="mine" class="active">MOBIL SAYA</button>
+      <button data-tab="dealer">DEALER</button>
+      <button data-tab="perf">PERFORMA</button>
+      <button data-tab="style">TAMPILAN</button>
+    </div>
+    <div id="g-content" class="g-content"></div>
+  </div>
+  <div class="g-right panel" id="g-stats"></div>
+  <div class="g-bottom">
+    <span class="hint">Seret layar untuk memutar mobil</span>
+    <button id="g-back" class="btn primary">KEMBALI KE JALAN ▶</button>
+  </div>
+</div>
+
+<!-- ============ STUDIO DESAIN LIVERY ============ -->
+<div id="designer" class="screen">
+  <div class="ds-panel panel">
+    <div class="ds-top">
+      <div><b class="ds-title">🎨 STUDIO DESAIN</b> <span id="ds-car" class="muted"></span></div>
+      <button id="ds-close" class="btn sm ghost">✕ TUTUP</button>
+    </div>
+    <div id="ds-tools" class="chips">
+      <button class="chip" data-tool="brush">🖌 Kuas</button>
+      <button class="chip" data-tool="eraser">🧽 Penghapus</button>
+      <button class="chip" data-tool="line">／ Garis</button>
+      <button class="chip" data-tool="rect">▭ Kotak</button>
+      <button class="chip" data-tool="ellipse">◯ Elips</button>
+      <button class="chip" data-tool="text">T Teks</button>
+      <button class="chip" data-tool="sticker">★ Stiker</button>
+      <button class="chip" data-tool="fill">▧ Isi Penuh</button>
+      <button class="chip" data-tool="image">🖼 Gambar</button>
+    </div>
+    <div id="ds-wrap" class="ds-wrap">
+      <canvas id="ds-art"></canvas>
+      <canvas id="ds-guide"></canvas>
+      <canvas id="ds-tmp"></canvas>
+    </div>
+    <div class="ds-props">
+      <label>Warna <input type="color" id="ds-color" value="#ffffff"></label>
+      <div id="ds-pal" class="swatches"></div>
+      <label>Ukuran <input type="range" id="ds-size" min="2" max="160" value="24"> <b id="ds-size-v">24</b></label>
+      <label>Transparansi <input type="range" id="ds-alpha" min="0.1" max="1" step="0.05" value="1"></label>
+      <label>Bentuk <select id="ds-fill"><option value="fill">Diisi</option><option value="stroke">Garis tepi</option></select></label>
+      <label>Font <select id="ds-font"><option>Arial Black</option><option>Impact</option><option>Georgia</option><option>Courier New</option><option>Orbitron</option><option>Rajdhani</option><option>Comic Sans MS</option></select></label>
+      <label>Teks <input id="ds-text" maxlength="24" placeholder="mis. NEON 27" spellcheck="false"></label>
+      <label>Stiker <select id="ds-sticker"><option value="star">Bintang</option><option value="bolt">Petir</option><option value="flame">Lidah api</option><option value="number">Nomor balap</option><option value="stripes">Garis ganda panjang</option><option value="checker">Kotak catur</option><option value="wing">Sayap</option><option value="heart">Hati</option></select></label>
+      <label class="ds-chk"><input type="checkbox" id="ds-mirror" checked> Tulisan terbaca di kedua sisi</label>
+    </div>
+    <div class="ds-actions">
+      <button id="ds-undo" class="btn sm ghost">↶ Urungkan</button>
+      <button id="ds-clear" class="btn sm ghost">Hapus Semua</button>
+      <button id="ds-import" class="btn sm ghost">📁 Impor Gambar</button>
+      <button id="ds-cover" class="btn sm ghost">Penuhi Kanvas</button>
+      <button id="ds-template" class="btn sm ghost">⬇ Template</button>
+      <button id="ds-export" class="btn sm ghost">⬇ Simpan PNG</button>
+      <button id="ds-remove" class="btn sm danger">Lepas Desain</button>
+      <button id="ds-save" class="btn sm primary">PASANG DI MOBIL</button>
+      <input type="file" id="ds-file" accept="image/png,image/jpeg,image/webp" class="hidden">
+    </div>
+    <p id="ds-msg" class="small muted"></p>
+  </div>
+</div>
+
+<!-- ============ PETA ============ -->
+<div id="map" class="screen dim">
+  <div class="map-wrap">
+    <div class="map-canvas-wrap panel"><canvas id="bigmap" width="960" height="400"></canvas></div>
+    <div class="panel map-side">
+      <h2>PETA & EVENT</h2>
+      <div class="legend">
+        <span style="--c:#ffb000">⟳ Sirkuit</span><span style="--c:#00e5ff">➜ Sprint</span>
+        <span style="--c:#ff2bd6">∿ Drift</span><span style="--c:#7cff00">⇉ Drag</span><span style="--c:#4dd9ff">G Garasi</span>
+      </div>
+      <div id="event-list" class="event-list"></div>
+      <button class="btn ghost" data-close="map">TUTUP (M)</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ HASIL ============ -->
+<div id="results" class="screen dim center">
+  <div class="panel results-panel" id="results-panel"></div>
+</div>
+
+<!-- ============ PERINGKAT ============ -->
+<div id="leader" class="screen dim center">
+  <div class="panel list-panel">
+    <h2>PAPAN PERINGKAT</h2>
+    <div id="leader-body" class="leader-body"></div>
+    <button class="btn ghost" data-close="leader">TUTUP</button>
+  </div>
+</div>
+
+<!-- ============ PENGATURAN ============ -->
+<div id="settings" class="screen dim center">
+  <div class="panel list-panel">
+    <h2>PENGATURAN</h2>
+    <div class="set-row"><span>Volume Musik</span><input type="range" id="set-music" min="0" max="1" step="0.05"></div>
+    <div class="set-row"><span>Volume Efek</span><input type="range" id="set-sfx" min="0" max="1" step="0.05"></div>
+    <div class="set-row"><span>Kualitas Grafis</span>
+      <select id="set-quality"><option value="low">Rendah (HP/laptop lama)</option><option value="medium">Sedang</option><option value="high">Tinggi (bayangan)</option></select></div>
+    <div class="set-row"><span>Waktu / Suasana</span>
+      <select id="set-time"><option value="dusk">Senja (realistis)</option><option value="day">Siang</option><option value="night">Malam (neon)</option></select></div>
+    <div class="set-row"><span>Transmisi</span>
+      <select id="set-trans"><option value="auto">Otomatis</option><option value="manual">Manual (E/Q)</option></select></div>
+    <div class="set-row"><span>Kamera</span>
+      <select id="set-cam"><option value="0">Belakang dekat</option><option value="1">Belakang jauh</option><option value="2">Kap mesin</option></select></div>
+    <div class="set-row"><span>Lalu lintas di kota</span><input type="checkbox" id="set-traffic"></div>
+    <div class="set-row"><span>Tampilkan FPS</span><input type="checkbox" id="set-fps"></div>
+    <p class="small muted" id="set-note">Perubahan kualitas grafis berlaku setelah halaman dimuat ulang.</p>
+    <button class="btn ghost" data-close="settings">TUTUP</button>
+  </div>
+</div>
+
+<!-- ============ KONTROL ============ -->
+<div id="help" class="screen dim center">
+  <div class="panel list-panel">
+    <h2>KONTROL</h2>
+    <table class="keys">
+      <tr><td><kbd>W</kbd>/<kbd>↑</kbd></td><td>Gas</td></tr>
+      <tr><td><kbd>S</kbd>/<kbd>↓</kbd></td><td>Rem / Mundur</td></tr>
+      <tr><td><kbd>A</kbd><kbd>D</kbd>/<kbd>←</kbd><kbd>→</kbd></td><td>Setir</td></tr>
+      <tr><td><kbd>Spasi</kbd></td><td>Rem tangan (drift)</td></tr>
+      <tr><td><kbd>Shift</kbd>/<kbd>N</kbd></td><td>Nitro (NOS)</td></tr>
+      <tr><td><kbd>E</kbd> / <kbd>Q</kbd></td><td>Naik / turun gigi (manual & Drag) · E juga untuk masuk event</td></tr>
+      <tr><td><kbd>C</kbd></td><td>Ganti kamera</td></tr>
+      <tr><td><kbd>R</kbd></td><td>Kembalikan mobil ke jalan</td></tr>
+      <tr><td><kbd>M</kbd></td><td>Peta & daftar event</td></tr>
+      <tr><td><kbd>T</kbd></td><td>Lagu berikutnya</td></tr>
+      <tr><td><kbd>Esc</kbd>/<kbd>P</kbd></td><td>Menu jeda</td></tr>
+    </table>
+    <p class="small muted">Gamepad (Xbox/PS) juga didukung: RT gas, LT rem, A nitro, X rem tangan, RB/LB ganti gigi, Y kamera, Start menu.</p>
+    <p class="small muted"><b>Tips drag:</b> gas saat hitung mundur agar jarum RPM di zona hijau untuk START SEMPURNA, lalu oper gigi saat lampu shift menyala hijau.</p>
+    <button class="btn ghost" data-close="help">TUTUP</button>
+  </div>
+</div>
+
+<!-- ============ KELUAR GAME ============ -->
+<div id="quit" class="screen center">
+  <div class="panel menu-panel">
+    <div class="logo">NEON<span>RUSH</span></div>
+    <h2 style="margin-top:14px">GAME SUDAH BERHENTI</h2>
+    <p id="quit-msg" class="muted">Menyimpan progres…</p>
+    <button id="quit-again" class="btn primary hidden" onclick="location.reload()">MAIN LAGI</button>
+  </div>
+</div>
+
+<div id="toasts"></div>
+<div id="saving" class="hidden">Menyimpan…</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<!-- efek pasca-proses (bloom). Jika gagal dimuat, game tetap jalan tanpa efek -->
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/CopyShader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/LuminosityHighPassShader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/EffectComposer.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/RenderPass.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/ShaderPass.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
+<!-- pemuat model 3D .glb (untuk model mobil buatan sendiri) -->
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+<script src="js/config.js"></script>
+<script src="js/utils.js"></script>
+<script src="js/data.js"></script>
+<script src="js/db.js"></script>
+<script src="js/audio.js"></script>
+<script src="js/world.js"></script>
+<script src="js/car.js"></script>
+<script src="js/traffic.js"></script>
+<script src="js/airport.js"></script>
+<script src="js/landmarks.js"></script>
+<script src="js/post.js"></script>
+<script src="js/race.js"></script>
+<script src="js/showroom.js"></script>
+<script src="js/designer.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>

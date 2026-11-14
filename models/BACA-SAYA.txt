@@ -1,0 +1,2 @@
+Taruh file model mobil 3D (.glb) di folder ini, lalu daftarkan di js/config.js (CUSTOM_MODELS).
+Lihat PANDUAN_DESAIN_MOBIL.md untuk spesifikasi.
