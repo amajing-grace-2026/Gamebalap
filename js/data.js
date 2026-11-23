@@ -6,6 +6,10 @@ const DATA = {};
 // shape: len=panjang, wid=lebar, hgt=tinggi bodi, clear=ground clearance, nose=kemiringan kap,
 // tail=kemiringan buntut, cabLen/cabOff/cabH=kabin, ws/rs=kemiringan kaca depan/belakang, wr=radius roda
 DATA.CARS = [
+  // Mobil dari foto mainan pemain: supercar mesin tengah hijau mint, kanopi kaca biru, atap belakang hitam
+  { id: 'jade', name: 'Jade Blade RS', maker: 'Jade', cls: 'D', price: 18000, desc: 'Supercar mungil hijau mint — mobil pertamamu.',
+    accel: 6.9, top: 196, grip: 1.04, handling: 1.08, special: 'jade',
+    shape: { len: 4.45, wid: 1.92, hgt: 0.5, clear: 0.16, nose: 1.35, tail: 0.3, cabLen: 1.75, cabOff: 0.0, cabH: 0.5, ws: 1.0, rs: 0.05, wr: 0.36 } },
   { id: 'pixel', name: 'Kogane Pixel', maker: 'Kogane', cls: 'D', price: 9000, desc: 'Hatchback lincah, gampang dikendalikan.',
     accel: 6.2, top: 178, grip: 1.0, handling: 1.12,
     shape: { len: 4.1, wid: 1.8, hgt: 0.6, clear: 0.2, nose: 0.9, tail: 0.2, cabLen: 2.5, cabOff: -0.3, cabH: 0.58, ws: 1.0, rs: 0.35, wr: 0.34 } },
@@ -182,3 +186,13 @@ DATA.TYPE_INFO = {
 DATA.RIVALS = ['Raka "Kilat"', 'Sinta Neon', 'Bayu Turbo', 'Dewi Drift', 'Joko Nitro', 'Maya Vortex', 'Rio Blaze',
   'Nadia Ghost', 'Tono Malam', 'Laras Kobra', 'Dimas Shift', 'Kirana Voltase'];
 DATA.GARAGE_NODE = [4, 4];
+
+// Mobil awal untuk pemain baru & akun tamu: Jade Blade RS (hijau mint metalik)
+DATA.DEFAULT_CAR = 'jade';
+DATA.defaultCarEntry = () => {
+  const e = DATA.newCarEntry(DATA.DEFAULT_CAR, '#4fcf92');
+  e.style.finish = 'gloss';
+  e.style.rim = '#c9ced6';
+  e.style.tint = 0;
+  return e;
+};

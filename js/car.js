@@ -116,6 +116,108 @@ const CarFactory = {
     return root;
   },
 
+  /* ---------------- JADE BLADE RS: detail khusus dari foto mobil mainan ----------------
+     kanopi biru bening, atap belakang & penutup mesin hitam, bilah samping, fascia depan
+     hitam bergril, stiker kap (2 garis + kotak piksel + garis lengkung), 4 knalpot */
+  jadeDetails(body, sh, Wd, paint, glass, opts) {
+    const S = this.shared();
+    const L = sh.len, Hb = sh.hgt, c = sh.clear, top = c + Hb, nz = L / 2, tz = -L / 2;
+    const zr = sh.cabOff - sh.cabLen / 2, zf = sh.cabOff + sh.cabLen / 2;
+    const cw = Wd * 0.86;
+    const matte = S.jadeBlack || (S.jadeBlack = new THREE.MeshStandardMaterial({ color: 0x0b0c0e, roughness: 0.8, metalness: 0.1 }));
+    const add = (geo, mat, x, y, z) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); m.castShadow = true; body.add(m); return m; };
+    // interior gelap (jok) yang terlihat lewat kanopi bening
+    add(new THREE.BoxGeometry(cw * 0.74, sh.cabH * 0.5, sh.cabLen * 0.78), matte, 0, top + sh.cabH * 0.22, sh.cabOff - 0.05);
+    // atap belakang + penutup mesin hitam bergaya fastback
+    const ec = new THREE.Shape();
+    ec.moveTo(zr + 0.04, top - 0.02);
+    ec.lineTo(zr + 0.04, top + sh.cabH * 0.97);
+    ec.bezierCurveTo(zr - 0.3, top + sh.cabH * 0.96, tz + sh.tail + 0.5, top + 0.24, tz + sh.tail + 0.1, top + 0.1);
+    ec.lineTo(tz + sh.tail + 0.1, top - 0.02);
+    ec.closePath();
+    const ed = cw * 0.84;
+    const eg = new THREE.ExtrudeGeometry(ec, { depth: ed, bevelEnabled: true, bevelThickness: 0.04, bevelSize: 0.04, bevelSegments: 2, curveSegments: 10 });
+    eg.translate(0, 0, -ed / 2);
+    eg.rotateY(-Math.PI / 2);
+    const ep = eg.attributes.position;
+    for (let i = 0; i < ep.count; i++) { const k = U.clamp((ep.getY(i) - top) / sh.cabH, 0, 1); ep.setX(i, ep.getX(i) * (1 - 0.18 * k)); }
+    eg.computeVertexNormals();
+    add(eg, matte, 0, 0, 0);
+    // bilah samping (side blade) di belakang pintu, naik sampai atap
+    [-1, 1].forEach((sd) => {
+      const h = Hb * 0.72 + sh.cabH * 0.78;
+      const b = add(new THREE.BoxGeometry(0.06, h, 0.5), paint, sd * (Wd / 2) * 0.88, c + Hb * 0.32 + h / 2, zr - 0.02);
+      b.rotation.z = -sd * 0.13;
+    });
+    // fascia depan hitam dengan sirip gril horizontal
+    add(new THREE.BoxGeometry(Wd * 0.9, Hb * 0.46, 0.3), matte, 0, c + Hb * 0.24, nz - 0.02);
+    const slat = new THREE.MeshStandardMaterial({ color: 0x30343b, roughness: 0.6 });
+    [0.1, 0.2, 0.3].forEach((f) => add(new THREE.BoxGeometry(Wd * 0.82, 0.022, 0.02), slat, 0, c + Hb * f + 0.02, nz + 0.135));
+    add(new THREE.BoxGeometry(Wd * 0.32, Hb * 0.26, 0.02), S.dark, 0, c + Hb * 0.22, nz + 0.14);
+    // bumper belakang bawah & 4 knalpot (dua pasang)
+    add(new THREE.BoxGeometry(Wd * 0.84, Hb * 0.2, 0.22), matte, 0, c + 0.1, tz + 0.02);
+    [-0.32, -0.24, 0.24, 0.32].forEach((f) => {
+      const ex = add(new THREE.CylinderGeometry(0.045, 0.045, 0.12, 10).rotateX(Math.PI / 2), matte, f * Wd, c + 0.08, tz - 0.08);
+      ex.castShadow = false;
+    });
+    // stiker kap mengikuti lengkung permukaan kap
+    if (!opts.lite) body.add(this.hoodDecal(sh, Wd, zf + 0.02, nz - 0.1, Wd * 0.64, this.jadeHoodTex()));
+  },
+  // tinggi permukaan atas profil bodi pada posisi z (+ tebal bevel)
+  topY(sh, z) {
+    const pts = this.bodyProfile(sh).getPoints(30);
+    let best = -1e9, slope = 0;
+    for (let i = 0; i < pts.length - 1; i++) {
+      const a = pts[i], b = pts[i + 1];
+      if ((z - a.x) * (z - b.x) <= 0 && a.x !== b.x) {
+        const t = (z - a.x) / (b.x - a.x), y = a.y + (b.y - a.y) * t;
+        if (y > best) { best = y; slope = (b.y - a.y) / (b.x - a.x); }
+      }
+    }
+    return best + 0.12 * Math.cos(Math.atan(slope)) + 0.012;
+  },
+  hoodDecal(sh, Wd, z0, z1, w, tex) {
+    const L = sh.len, n = 24, pos = [], uv = [], idx = [];
+    for (let j = 0; j <= n; j++) {
+      const z = z0 + ((z1 - z0) * j) / n;
+      const y = this.topY(sh, z);
+      const t = Math.min(1, Math.abs(z) / (L / 2));
+      const half = (w / 2) * (1 - 0.15 * Math.pow(t, 2.4));
+      pos.push(-half, y, z, half, y, z);
+      uv.push(0, j / n, 1, j / n);
+    }
+    for (let j = 0; j < n; j++) { const a = j * 2; idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+    g.setIndex(idx);
+    g.computeVertexNormals();
+    const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ map: tex, transparent: true, alphaTest: 0.2, roughness: 0.5, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 }));
+    return m;
+  },
+  jadeHoodTex() {
+    const S = this.shared();
+    if (S.jadeHood) return S.jadeHood;
+    const W = 256, H = 512, c = Tex.canvas(W, H), g = c.getContext('2d');
+    const yg = '#c6d64a';
+    // atas kanvas = ujung depan (hidung), bawah = pangkal kaca depan
+    g.strokeStyle = yg; g.lineWidth = 6; g.lineCap = 'round';
+    g.beginPath(); g.moveTo(W * 0.06, H * 0.96); g.quadraticCurveTo(W * 0.12, H * 0.2, W * 0.32, H * 0.14); g.lineTo(W * 0.68, H * 0.14); g.quadraticCurveTo(W * 0.88, H * 0.2, W * 0.94, H * 0.96); g.stroke();
+    // lubang udara (scoop) di depan
+    g.fillStyle = '#2f6e52'; g.beginPath(); g.moveTo(W * 0.34, H * 0.05); g.lineTo(W * 0.66, H * 0.05); g.lineTo(W * 0.62, H * 0.12); g.lineTo(W * 0.38, H * 0.12); g.closePath(); g.fill();
+    g.fillStyle = 'rgba(0,0,0,0.35)'; g.fillRect(W * 0.38, H * 0.06, W * 0.24, H * 0.03);
+    // dua garis tebal memanjang
+    g.fillStyle = yg;
+    g.fillRect(W * 0.42, H * 0.2, W * 0.08, H * 0.62);
+    g.fillRect(W * 0.56, H * 0.2, W * 0.08, H * 0.62);
+    // kotak-kotak piksel
+    [[0.3, 0.28], [0.25, 0.33], [0.32, 0.38], [0.27, 0.44], [0.7, 0.62], [0.75, 0.68], [0.69, 0.74]].forEach(([x, y]) => g.fillRect(W * x, H * y, W * 0.045, W * 0.045));
+    const t = Tex.make(c);
+    t._shared = true;
+    S.jadeHood = t;
+    return t;
+  },
+
   // profil samping bodi (dipakai untuk bodi 3D & masker livery)
   bodyProfile(sh) {
     const L = sh.len, Hb = sh.hgt, c = sh.clear, top = c + Hb, nz = L / 2, tz = -L / 2;
@@ -296,6 +398,7 @@ const CarFactory = {
     // --- kabin kaca hitam menyatu (gaya floating-roof / panoramic)
     const tintCol = [0x1e2833, 0x141a22, 0x0a0d12, 0x030304][st.tint == null ? 1 : st.tint];
     const glass = new THREE.MeshStandardMaterial({ color: tintCol, roughness: 0.05, metalness: 0.9, envMap: envM, envMapIntensity: 1.5 });
+    if (car.special === 'jade') { glass.color.set(0x3fc8e8); glass.transparent = true; glass.opacity = 0.62; glass.metalness = 0.35; glass.envMapIntensity = 1.8; } // kanopi biru bening seperti mainan
     const zr = sh.cabOff - sh.cabLen / 2, zf = sh.cabOff + sh.cabLen / 2;
     const rl = Math.max(0.3, sh.cabLen - sh.ws - sh.rs);
     const cab = new THREE.Shape();
@@ -520,6 +623,8 @@ const CarFactory = {
       body.add(f);
       return f;
     });
+
+    if (car.special === 'jade') this.jadeDetails(body, sh, Wd, paint, glass, opts);
 
     // --- livery desain sendiri (dari Studio Desain atau gambar impor)
     let liveryTexs = null;

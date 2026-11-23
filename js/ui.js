@@ -325,7 +325,7 @@ const UI = {
     // pemain
     c.setTransform(1, 0, 0, 1, 0, 0);
     c.fillStyle = '#fff'; c.shadowColor = '#00e5ff'; c.shadowBlur = 8;
-    c.beginPath(); c.moveTo(half, half - 9); c.lineTo(half + 6, half + 7); c.lineTo(half - 6, half + 7); c.closePath(); c.fill();
+    c.beginPath(); c.moveTo(half, half - 12); c.lineTo(half + 7, half + 9); c.lineTo(half, half + 4); c.lineTo(half - 7, half + 9); c.closePath(); c.fill();
     c.shadowBlur = 0;
   },
   _drawRoads(c) {
@@ -471,7 +471,7 @@ const UI = {
       const q = T(p.x, p.z);
       c.save(); c.translate(q[0], q[1]); c.rotate(-p.h + Math.PI);
       c.fillStyle = '#fff'; c.shadowColor = '#fff'; c.shadowBlur = 10;
-      c.beginPath(); c.moveTo(0, 10); c.lineTo(7, -7); c.lineTo(-7, -7); c.closePath(); c.fill();
+      c.beginPath(); c.moveTo(0, 13); c.lineTo(8, -9); c.lineTo(0, -4); c.lineTo(-8, -9); c.closePath(); c.fill();
       c.restore();
     }
   },

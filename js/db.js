@@ -21,7 +21,7 @@ const DB = {
   newData() {
     return {
       v: 1, money: (GAME_CONFIG.START_MONEY || 5000), rep: 0, wins: 0, races: 0,
-      cars: [], current: 0, done: {}, best: {}, created: Date.now(),
+      cars: [DATA.defaultCarEntry()], current: 0, done: {}, best: {}, created: Date.now(),
     };
   },
 
