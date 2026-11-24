@@ -167,6 +167,7 @@ DATA.EVENTS = [
 DATA.eventById = (id) => DATA.EVENTS.find((e) => e.id === id);
 // titik awal & titik kedua event (koordinat dunia)
 DATA.evPoints = (ev) => {
+  if (ev.path) return [ev.path[0], ev.path[3] || ev.path[1]].map((p) => ({ x: p[0], z: p[1] }));
   if (ev.points) return ev.points.slice(0, 2).map((p) => ({ x: p[0], z: p[1] }));
   return ev.route.slice(0, 2).map((r) => World.node(r[0], r[1]));
 };

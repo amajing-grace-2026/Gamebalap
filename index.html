@@ -231,6 +231,8 @@
     <div class="set-row"><span>Volume Efek</span><input type="range" id="set-sfx" min="0" max="1" step="0.05"></div>
     <div class="set-row"><span>Kualitas Grafis</span>
       <select id="set-quality"><option value="low">Rendah (HP/laptop lama)</option><option value="medium">Sedang</option><option value="high">Tinggi (bayangan)</option></select></div>
+    <div class="set-row"><span>Peta</span>
+      <select id="set-map"><option value="neopolis">Neopolis (kota fiksi)</option><option value="malang">Kota Malang (peta asli)</option></select></div>
     <div class="set-row"><span>Waktu / Suasana</span>
       <select id="set-time"><option value="dusk">Senja (realistis)</option><option value="day">Siang</option><option value="night">Malam (neon)</option></select></div>
     <div class="set-row"><span>Transmisi</span>
@@ -263,6 +265,7 @@
     </table>
     <p class="small muted">Gamepad (Xbox/PS) juga didukung: RT gas, LT rem, A nitro, X rem tangan, RB/LB ganti gigi, Y kamera, Start menu.</p>
     <p class="small muted"><b>Tips drag:</b> gas saat hitung mundur agar jarum RPM di zona hijau untuk START SEMPURNA, lalu oper gigi saat lampu shift menyala hijau.</p>
+    <p class="small muted"><b>Peta Kota Malang:</b> data jalan © OpenStreetMap contributors (lisensi ODbL, openstreetmap.org/copyright); ketinggian dari SRTM via Mapzen/AWS Terrain Tiles.</p>
     <button class="btn ghost" data-close="help">TUTUP</button>
   </div>
 </div>
@@ -300,6 +303,8 @@
 <script src="js/traffic.js"></script>
 <script src="js/airport.js"></script>
 <script src="js/landmarks.js"></script>
+<script src="js/world-malang.js"></script>
+<script>if (MalangWorld.wanted) document.write('<script src="js/malang-data.js"><\/script>');</script>
 <script src="js/post.js"></script>
 <script src="js/race.js"></script>
 <script src="js/showroom.js"></script>

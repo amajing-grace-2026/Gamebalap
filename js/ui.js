@@ -65,6 +65,12 @@ const UI = {
     const sm = this.$('set-music'), sf = this.$('set-sfx'), sq = this.$('set-quality'), st = this.$('set-trans'), sc = this.$('set-cam'), stf = this.$('set-traffic'), sfps = this.$('set-fps');
     const stime = this.$('set-time');
     stime.value = S.time;
+    const smap = this.$('set-map');
+    smap.value = World.isMalang ? 'malang' : 'neopolis';
+    smap.onchange = () => {
+      S.map = smap.value; this.g.saveSettings();
+      if (confirm('Muat ulang sekarang untuk pindah peta? (Progres sudah tersimpan)')) location.href = location.pathname;
+    };
     stime.onchange = () => { S.time = stime.value; this.g.saveSettings(); if (confirm('Muat ulang sekarang agar suasana waktu berubah? (Progres sudah tersimpan)')) location.reload(); };
     sm.value = S.music; sf.value = S.sfx; sq.value = S.quality; st.value = S.trans; sc.value = S.cam; stf.checked = S.traffic; sfps.checked = S.fps;
     sm.oninput = () => { S.music = +sm.value; this.g.applySettings(); };
@@ -329,6 +335,7 @@ const UI = {
     c.shadowBlur = 0;
   },
   _drawRoads(c) {
+    if (World.isMalang) { MalangWorld.drawMap(c); return; }
     const N = World.N, P = World.P, W = World.W, sz = World.size;
     const A = Airport.AREA, R = Airport.RWY, Ap = Airport.APRON, C = Airport.CORR, TU = Airport.TUN;
     // bandara
@@ -415,23 +422,34 @@ const UI = {
   },
   drawBigMap() {
     const cv = this.el.bigmap, c = cv.getContext('2d');
+    const mlg = World.isMalang;
+    if (mlg && cv.width !== 620) { cv.width = 620; cv.height = 900; cv.style.width = 'auto'; cv.style.maxWidth = '100%'; cv.style.maxHeight = '74vh'; }
     const CW = cv.width, CH = cv.height;
-    const minX = -30, maxX = 2000, minZ = -150, maxZ = 800;
+    // Malang: utara di atas (x = timur, z = selatan); dipangkas ke area jalan utama
+    const mb = mlg ? MalangWorld.routeBounds() : null;
+    const minX = mlg ? mb.x0 : -30, maxX = mlg ? mb.x1 : 2000, minZ = mlg ? mb.z0 : -150, maxZ = mlg ? mb.z1 : 800;
     const s = Math.min((CW - 30) / (maxX - minX), (CH - 30) / (maxZ - minZ));
     const ox = (CW - (maxX - minX) * s) / 2, oy = (CH - (maxZ - minZ) * s) / 2;
     c.setTransform(1, 0, 0, 1, 0, 0);
     c.fillStyle = '#07050f'; c.fillRect(0, 0, CW, CH);
-    // diputar 180° agar konsisten dengan minimap (arah +z ke atas)
-    const T = (x, z) => [ox + (maxX - x) * s, oy + (maxZ - z) * s];
+    // Neopolis diputar 180° agar konsisten dengan minimap (arah +z ke atas)
+    const T = mlg ? (x, z) => [ox + (x - minX) * s, oy + (z - minZ) * s] : (x, z) => [ox + (maxX - x) * s, oy + (maxZ - z) * s];
     this._bmT = T;
-    c.setTransform(-s, 0, 0, -s, ox + maxX * s, oy + maxZ * s);
+    if (mlg) c.setTransform(s, 0, 0, s, ox - minX * s, oy - minZ * s); else c.setTransform(-s, 0, 0, -s, ox + maxX * s, oy + maxZ * s);
     this._drawRoads(c);
     c.setTransform(1, 0, 0, 1, 0, 0);
     c.font = 'bold 13px Rajdhani, Arial'; c.fillStyle = 'rgba(255,255,255,0.55)'; c.textAlign = 'center';
     const lb = (t, x, z) => { const q = T(x, z); c.fillText(t, q[0], q[1]); };
-    lb('KOTA NEOPOLIS', 400, 830 > maxZ ? 790 : 830);
-    lb('TEROWONGAN', 1000, 440);
-    lb('BANDARA NEOPOLIS', 1580, 790);
+    if (mlg) {
+      c.textAlign = 'left'; c.fillText('KOTA MALANG  ·  U ↑', 14, 22);
+      c.font = '11px Rajdhani, Arial'; c.fillStyle = 'rgba(255,255,255,0.4)';
+      c.fillText('Peta © OpenStreetMap contributors', 14, CH - 12);
+      c.textAlign = 'center';
+    } else {
+      lb('KOTA NEOPOLIS', 400, 830 > maxZ ? 790 : 830);
+      lb('TEROWONGAN', 1000, 440);
+      lb('BANDARA NEOPOLIS', 1580, 790);
+    }
     c.setTransform(1, 0, 0, 1, 0, 0);
     const g = this.g;
     // rute GPS
@@ -469,7 +487,7 @@ const UI = {
     const p = g.player;
     if (p) {
       const q = T(p.x, p.z);
-      c.save(); c.translate(q[0], q[1]); c.rotate(-p.h + Math.PI);
+      c.save(); c.translate(q[0], q[1]); c.rotate(World.isMalang ? -p.h : -p.h + Math.PI);
       c.fillStyle = '#fff'; c.shadowColor = '#fff'; c.shadowBlur = 10;
       c.beginPath(); c.moveTo(0, 13); c.lineTo(8, -9); c.lineTo(0, -4); c.lineTo(-8, -9); c.closePath(); c.fill();
       c.restore();

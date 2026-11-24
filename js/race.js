@@ -71,6 +71,8 @@ class Path {
 
 // Bangun titik lintasan dari daftar simpang, dengan tikungan dibulatkan
 function buildRoute(ev) {
+  // peta Malang: lintasan sudah berupa titik rapat di sepanjang jalan asli
+  if (ev.path) return { path: new Path(ev.path.map((p) => ({ x: p[0], z: p[1] })), ev.loop), barriers: [], nodes: [] };
   const nodes = [];
   let wp;
   if (ev.points) {
@@ -256,7 +258,7 @@ const Race = {
     const isDrag = ev.type === 'drag';
     const slots = [];
     if (isDrag) {
-      [-7.5, -2.5, 2.5, 7.5].forEach((lat) => slots.push({ s: this.startOffset, lat }));
+      (World.isMalang ? [-5.1, -1.7, 1.7, 5.1] : [-7.5, -2.5, 2.5, 7.5]).forEach((lat) => slots.push({ s: this.startOffset, lat }));
     } else {
       for (let row = 0; row < 2; row++) [-3.5, 3.5].forEach((lat) => slots.push({ s: this.startOffset - 5 - row * 9, lat }));
     }
@@ -301,17 +303,18 @@ const Race = {
     const line = new THREE.Mesh(new THREE.PlaneGeometry(World.W, 2), new THREE.MeshBasicMaterial({ map: tex, polygonOffset: true, polygonOffsetFactor: -3 }));
     line.rotation.x = -Math.PI / 2;
     line.rotation.z = Math.atan2(d.x, d.z);
-    line.position.set(p.x, 0.04, p.z);
+    const gy = World.heightAt(p.x, p.z);
+    line.position.set(p.x, gy + 0.1, p.z);
     g.add(line);
     const col = DATA.TYPE_INFO[this.ev.type].color;
     const pm = new THREE.MeshBasicMaterial({ color: col });
     [-1, 1].forEach((sd) => {
       const pil = new THREE.Mesh(new THREE.BoxGeometry(0.8, 9, 0.8), pm);
-      pil.position.set(p.x + (-d.z) * sd * (H - 0.5), 4.5, p.z + d.x * sd * (H - 0.5));
+      pil.position.set(p.x + (-d.z) * sd * (H - 0.5), gy + 4.5, p.z + d.x * sd * (H - 0.5));
       g.add(pil);
     });
     const bar = new THREE.Mesh(new THREE.BoxGeometry(World.W, 1.4, 0.6), new THREE.MeshBasicMaterial({ color: 0x111111 }));
-    bar.position.set(p.x, 9, p.z);
+    bar.position.set(p.x, gy + 9, p.z);
     bar.rotation.y = Math.atan2(d.x, d.z) + Math.PI / 2;
     g.add(bar);
     const cv = Tex.canvas(512, 64);
@@ -321,7 +324,7 @@ const Race = {
     cx.fillStyle = col; cx.shadowColor = col; cx.shadowBlur = 12;
     cx.fillText(this.ev.loop ? 'START / FINISH' : 'FINISH', 256, 34);
     const sign = new THREE.Mesh(new THREE.PlaneGeometry(World.W - 1, 1.3), new THREE.MeshBasicMaterial({ map: Tex.make(cv), side: THREE.DoubleSide }));
-    sign.position.set(p.x, 9, p.z);
+    sign.position.set(p.x, gy + 9, p.z);
     sign.rotation.y = Math.atan2(d.x, d.z) + Math.PI;
     sign.position.x -= d.x * 0.35; sign.position.z -= d.z * 0.35;
     g.add(sign);

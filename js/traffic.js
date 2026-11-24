@@ -293,7 +293,7 @@ const FX = {
     if (!this.pool.length) return;
     const p = this.pool[this.next];
     this.next = this.next + 1 >= 150 ? 0 : this.next + 1;
-    p.s.position.set(x + U.rand(-0.3, 0.3), 0.4, z + U.rand(-0.3, 0.3));
+    p.s.position.set(x + U.rand(-0.3, 0.3), 0.4 + World.heightAt(x, z), z + U.rand(-0.3, 0.3));
     p.vx = U.rand(-0.8, 0.8); p.vy = U.rand(0.6, 1.4); p.vz = U.rand(-0.8, 0.8);
     p.life = p.max = 1.2 + amount;
     p.size = 1.2 + amount;

@@ -855,6 +855,15 @@ class Vehicle {
     // hambatan
     a -= Math.sign(vF) * (0.35 + 0.00038 * vF * vF + (inp.throttle === 0 && inp.brake === 0 ? 1.0 : 0));
     if (inp.handbrake) a -= Math.sign(vF) * 2.8;
+    // peta Malang: tanjakan/turunan (gravitasi) & hambatan di luar aspal
+    if (World.isMalang) {
+      const g = World.probe(this.x, this.z, this.h, this.model.shape.len, this.model.shape.wid);
+      const ga = 9.81 * g.grade * 0.9;
+      // diam tanpa gas di tanjakan landai = tertahan (rem parkir/gesekan)
+      if (!(inp.throttle === 0 && Math.abs(vF) < 0.8 && Math.abs(ga) < 3)) a -= ga;
+      if (!g.onRoad) a -= Math.sign(vF) * (1.6 + 0.0025 * vF * vF);
+      this.offRoad = !g.onRoad;
+    }
     const newVF = vF + a * dt;
     if ((vF > 0 && newVF < 0 && inp.throttle === 0 && inp.brake === 0) || (vF < 0 && newVF > 0 && inp.throttle === 0)) vF = 0;
     else vF = newVF;
@@ -948,8 +957,19 @@ class Vehicle {
 
   sync(dt = 0) {
     const m = this.mesh;
-    m.position.set(this.x, 0, this.z);
-    m.rotation.y = this.h;
+    if (World.isMalang) {
+      const g = World.probe(this.x, this.z, this.h, this.model.shape.len, this.model.shape.wid);
+      this.gy = this.gy == null || Math.abs(g.y - this.gy) > 3 || dt === 0 ? g.y : this.gy + (g.y - this.gy) * Math.min(1, dt * 18);
+      this.gPitch = U.lerp(this.gPitch || 0, g.pitch, Math.min(1, dt * 12 || 1));
+      this.gRoll = U.lerp(this.gRoll || 0, g.roll, Math.min(1, dt * 12 || 1));
+      m.rotation.order = 'YXZ';
+      m.position.set(this.x, this.gy, this.z);
+      m.rotation.set(-this.gPitch, this.h, this.gRoll);
+    } else {
+      this.gy = 0;
+      m.position.set(this.x, 0, this.z);
+      m.rotation.y = this.h;
+    }
     const ud = this.ud;
     this.wheelRot += (this.vF / ud.wr) * dt;
     this.steerVis = U.lerp(this.steerVis, -this.inp.steer * 0.5, Math.min(1, dt * 10));

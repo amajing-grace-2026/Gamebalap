@@ -37,14 +37,20 @@ const World = {
 
   addWall(x0, z0, x1, z1) { this.walls.push({ x0, z0, x1, z1 }); },
 
-  build(scene, renderer, quality, time) {
+  // tinggi permukaan tanah (kota Neopolis datar; peta Malang menimpa fungsi ini)
+  heightAt() { return 0; },
+  // posisi penanda garasi + titik muncul mobil
+  garage() {
+    const n = this.node(DATA.GARAGE_NODE[0], DATA.GARAGE_NODE[1]);
+    return { x: n.x, z: n.z, sx: n.x, sz: n.z + 18, sh: 0 };
+  },
+
+  // langit, kabut, cahaya & env map (dipakai juga oleh peta Malang)
+  _atmosphere(scene, renderer, quality, time) {
     this.scene = scene;
     this.quality = quality;
     this.timeKey = TIMES[time] ? time : 'dusk';
     const T = (this.T = TIMES[this.timeKey]);
-    const rnd = U.rng(20261113);
-    const N = this.N, P = this.P, H = this.W / 2;
-    const center = this.size / 2;
     this.walls = [];
 
     // ------------ langit, kabut, cahaya
@@ -75,6 +81,14 @@ const World = {
 
     // ------------ env map untuk pantulan cat mobil, kaca & jalan basah
     this.envMap = this._envMap(renderer, T);
+    return T;
+  },
+
+  build(scene, renderer, quality, time) {
+    const T = this._atmosphere(scene, renderer, quality, time);
+    const rnd = U.rng(20261113);
+    const N = this.N, P = this.P, H = this.W / 2;
+    const center = this.size / 2;
 
     // ------------ tanah (rumput/tanah di luar kota) + aspal kota
     const grass = this._grassTex(T.grass);
@@ -364,9 +378,9 @@ const World = {
   },
 
   // pegunungan jauh di cakrawala
-  _mountains(scene, T) {
+  _mountains(scene, T, cx = 1000, cz = 400, R = 2700) {
     const pos = [], col = [];
-    const cx = 1000, cz = 400, R = 2700, n = 160;
+    const n = 160;
     const c0 = new THREE.Color(T.mount[0]), c1 = new THREE.Color(T.mount[1]), cf = new THREE.Color(T.fog);
     const rnd = U.rng(77);
     const hs = [];
@@ -389,6 +403,7 @@ const World = {
     const m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ vertexColors: true, fog: false, side: THREE.DoubleSide }));
     m.renderOrder = -5;
     scene.add(m);
+    return m;
   },
 
   inTunnel(x, z) { return x > 900 && x < 1100 && Math.abs(z - 400) < 13; },

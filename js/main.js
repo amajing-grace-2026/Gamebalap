@@ -63,7 +63,7 @@ const Input = {
 const Game = {
   state: 'boot',
   paused: false,
-  settings: { music: 0.6, sfx: 0.8, quality: 'medium', trans: 'auto', cam: 0, traffic: true, fps: false, time: 'dusk' },
+  settings: { music: 0.6, sfx: 0.8, quality: 'medium', trans: 'auto', cam: 0, traffic: true, fps: false, time: 'dusk', map: 'neopolis' },
   markers: [],
   gps: null,
   fps: 60,
@@ -94,11 +94,13 @@ const Game = {
 
     DB.init();
     CarFactory.loadCustomModels(); // model .glb buatan sendiri (jika ada di config)
-    UI.loading(0.15, 'Membangun kota Neopolis…');
+    // peta Kota Malang (data OpenStreetMap) bila dipilih di Pengaturan
+    this.malang = typeof MalangWorld !== 'undefined' && MalangWorld.wanted && MalangWorld.install();
+    UI.loading(0.15, this.malang ? 'Membangun Kota Malang…' : 'Membangun kota Neopolis…');
     setTimeout(() => {
       World.build(this.scene, r, q, this.settings.time);
       r.toneMappingExposure = World.T.exposure;
-      UI.loading(0.45, 'Menggali terowongan & membangun bandara…');
+      UI.loading(0.45, this.malang ? 'Menanam pohon & menyalakan lampu jalan…' : 'Menggali terowongan & membangun bandara…');
       setTimeout(() => {
         Airport.build(this.scene, World.T, q);
         Landmarks.build(this.scene, World.T, q);
@@ -210,8 +212,8 @@ const Game = {
     UI.hide('starter');
     this.buildPlayer();
     if (spawnAtGarage) {
-      const n = World.node(DATA.GARAGE_NODE[0], DATA.GARAGE_NODE[1]);
-      this.player.place(n.x, n.z + 18, 0);
+      const g = World.garage();
+      this.player.place(g.sx, g.sz, g.sh);
     }
     this.snapCamera();
     this.refreshMarkers();
@@ -235,10 +237,10 @@ const Game = {
     UI.openGarage();
   },
   leaveGarage() {
-    const n = World.node(DATA.GARAGE_NODE[0], DATA.GARAGE_NODE[1]);
+    const g = World.garage();
     this.state = 'roam';
     this.enterRoam(false);
-    this.player.place(n.x, n.z + 18, 0);
+    this.player.place(g.sx, g.sz, g.sh);
     this.snapCamera();
   },
 
@@ -248,13 +250,13 @@ const Game = {
       const ti = DATA.TYPE_INFO[ev.type];
       const n = DATA.evPoints(ev)[0];
       const obj = World.makeMarker(ti.color, ti.icon + ' ' + ti.name.toUpperCase());
-      obj.position.set(n.x, 0, n.z);
+      obj.position.set(n.x, World.heightAt(n.x, n.z), n.z);
       this.scene.add(obj);
       this.markers.push({ ev, obj, x: n.x, z: n.z, color: ti.color, icon: ti.icon, locked: false });
     });
-    const g = World.node(DATA.GARAGE_NODE[0], DATA.GARAGE_NODE[1]);
+    const g = World.garage();
     const obj = World.makeMarker('#4dd9ff', 'GARASI');
-    obj.position.set(g.x, 0, g.z);
+    obj.position.set(g.x, World.heightAt(g.x, g.z), g.z);
     this.scene.add(obj);
     this.markers.push({ ev: null, obj, x: g.x, z: g.z, color: '#4dd9ff', icon: 'G', locked: false });
     this.markers.forEach((m) => { m.obj.visible = false; });
@@ -371,8 +373,9 @@ const Game = {
     const p = this.player;
     if (!p) return;
     this.camState.h = p.h;
-    this.camera.position.set(p.x - Math.sin(p.h) * 7, 3, p.z - Math.cos(p.h) * 7);
-    this.camera.lookAt(p.x, 1, p.z);
+    const gy = p.gy || 0;
+    this.camera.position.set(p.x - Math.sin(p.h) * 7, gy + 3, p.z - Math.cos(p.h) * 7);
+    this.camera.lookAt(p.x, gy + 1, p.z);
   },
   updateCamera(dt) {
     const p = this.player, cam = this.camera, cs = this.camState;
@@ -383,11 +386,13 @@ const Game = {
     if (p.vF < -1 && p.inp.brake > 0) target = p.h; // mundur: tetap
     cs.h += U.angDiff(cs.h, target) * Math.min(1, dt * (mode === 2 ? 20 : 4.5));
     const fx = Math.sin(cs.h), fz = Math.cos(cs.h);
+    const gy = p.gy || 0;
     if (mode === 2) {
       const sh = p.model.shape;
-      const y = sh.clear + sh.hgt + sh.cabH * 0.75;
+      const y = gy + sh.clear + sh.hgt + sh.cabH * 0.75;
+      const ahead = World.isMalang ? World.heightAt(p.x + Math.sin(p.h) * 30, p.z + Math.cos(p.h) * 30) - gy : 0;
       cam.position.set(p.x + Math.sin(p.h) * 0.3, y, p.z + Math.cos(p.h) * 0.3);
-      cam.lookAt(p.x + Math.sin(p.h) * 30, y - 0.6, p.z + Math.cos(p.h) * 30);
+      cam.lookAt(p.x + Math.sin(p.h) * 30, y - 0.6 + ahead, p.z + Math.cos(p.h) * 30);
     } else {
       const dist = (mode === 0 ? 6.4 : 9.5) + sp * 0.025;
       const h = mode === 0 ? 2.25 : 3.4;
@@ -395,12 +400,14 @@ const Game = {
       const k = 1 - Math.exp(-dt * 12);
       cam.position.x += (tx - cam.position.x) * k;
       cam.position.z += (tz - cam.position.z) * k;
-      cam.position.y += (h - cam.position.y) * k;
+      let ty = gy + h;
+      if (World.isMalang) ty = Math.max(ty, World.heightAt(cam.position.x, cam.position.z) + 1.2);
+      cam.position.y += (ty - cam.position.y) * k;
       // jangan menembus gedung
       const o = { x: cam.position.x, z: cam.position.z, vx: 0, vz: 0, radius: 0.6 };
       World.collide(o);
       cam.position.x = o.x; cam.position.z = o.z;
-      cam.lookAt(p.x + fx * 3, 1.0, p.z + fz * 3);
+      cam.lookAt(p.x + fx * 3, gy + 1.0, p.z + fz * 3);
     }
     // FOV & guncangan saat cepat/nitro
     const fov = 60 + Math.min(22, sp * 0.28) + (p.nitroOn ? 8 : 0);
@@ -463,7 +470,7 @@ const Game = {
     if (hitMax > 3) {
       if (this._hitCd <= 0 || this._hitCd == null) {
         AudioSys.crash(hitMax);
-        FX.sparks(p.x + Math.sin(p.h) * 2, 0.6, p.z + Math.cos(p.h) * 2, Math.min(14, Math.round(hitMax)));
+        FX.sparks(p.x + Math.sin(p.h) * 2, (p.gy || 0) + 0.6, p.z + Math.cos(p.h) * 2, Math.min(14, Math.round(hitMax)));
         this._hitCd = 0.25;
         if (hitMax > 6) Race.driftCrash();
       }
@@ -494,9 +501,10 @@ const Game = {
     }
     // lampu pemain
     const hl = this.headLight;
-    hl.position.set(p.x + Math.sin(p.h) * 1.8, 1.0, p.z + Math.cos(p.h) * 1.8);
-    hl.target.position.set(p.x + Math.sin(p.h) * 20, 0, p.z + Math.cos(p.h) * 20);
-    this.glowLight.position.set(p.x, 0.4, p.z);
+    const py = p.gy || 0;
+    hl.position.set(p.x + Math.sin(p.h) * 1.8, py + 1.0, p.z + Math.cos(p.h) * 1.8);
+    hl.target.position.set(p.x + Math.sin(p.h) * 20, World.isMalang ? World.heightAt(p.x + Math.sin(p.h) * 20, p.z + Math.cos(p.h) * 20) : 0, p.z + Math.cos(p.h) * 20);
+    this.glowLight.position.set(p.x, py + 0.4, p.z);
     World.followSun(p.x, p.z);
     // suara pesawat yang lewat
     const jet = Math.pow(U.clamp(1 - Airport.nearestDist(p.x, p.z) / 650, 0, 1), 2);
@@ -524,7 +532,7 @@ const Game = {
         const locked = DB.data.rep < near.ev.req;
         UI.prompt(`<b style="color:${ti.color}">${ti.icon} ${near.ev.name}</b>${locked ? '<span class="lock">🔒 Butuh ' + near.ev.req + ' REP</span>' : `Tekan ${kbd} untuk lihat event`}`);
       } else {
-        UI.prompt(`<b style="color:#4dd9ff">GARASI NEOPOLIS</b>Tekan ${kbd} untuk masuk (tuning, dealer, cat)`);
+        UI.prompt(`<b style="color:#4dd9ff">GARASI ${World.isMalang ? 'MALANG' : 'NEOPOLIS'}</b>Tekan ${kbd} untuk masuk (tuning, dealer, cat)`);
       }
       if (this.gps && ((near.ev && near.ev.id === this.gps) || (!near.ev && this.gps === 'garage'))) this.gps = null;
     } else UI.prompt('');
