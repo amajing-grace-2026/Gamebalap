@@ -959,9 +959,15 @@ class Vehicle {
     const m = this.mesh;
     if (World.isMalang) {
       const g = World.probe(this.x, this.z, this.h, this.model.shape.len, this.model.shape.wid);
-      this.gy = this.gy == null || Math.abs(g.y - this.gy) > 3 || dt === 0 ? g.y : this.gy + (g.y - this.gy) * Math.min(1, dt * 18);
-      this.gPitch = U.lerp(this.gPitch || 0, g.pitch, Math.min(1, dt * 12 || 1));
-      this.gRoll = U.lerp(this.gRoll || 0, g.roll, Math.min(1, dt * 12 || 1));
+      // suspensi halus: kecepatan vertikal diprediksi dari tanjakan × laju, lalu dikoreksi pelan ke permukaan
+      if (this.gy == null || Math.abs(g.y - this.gy) > 3 || dt === 0) { this.gy = g.y; this.gyV = 0; } else {
+        const vy = g.grade * (this.vF || 0);
+        this.gyV = U.lerp(this.gyV || 0, vy, Math.min(1, dt * 6));
+        this.gy += this.gyV * dt;
+        this.gy += (g.y - this.gy) * Math.min(1, dt * 5);
+      }
+      this.gPitch = U.lerp(this.gPitch || 0, g.pitch, Math.min(1, dt * 7 || 1));
+      this.gRoll = U.lerp(this.gRoll || 0, g.roll, Math.min(1, dt * 5 || 1));
       m.rotation.order = 'YXZ';
       m.position.set(this.x, this.gy, this.z);
       m.rotation.set(-this.gPitch, this.h, this.gRoll);
