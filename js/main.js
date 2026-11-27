@@ -100,11 +100,24 @@ const Game = {
     setTimeout(() => {
       World.build(this.scene, r, q, this.settings.time);
       r.toneMappingExposure = World.T.exposure;
+      // Rendah: jarak pandang ±900 m (kabut, langit & pegunungan sudah disesuaikan World)
+      this.camera.far = World.far || 6000;
+      this.camera.updateProjectionMatrix();
       UI.loading(0.45, this.malang ? 'Menanam pohon & menyalakan lampu jalan…' : 'Menggali terowongan & membangun bandara…');
       setTimeout(() => {
         Airport.build(this.scene, World.T, q);
         Landmarks.build(this.scene, World.T, q);
         TrafficLights.build(this.scene);
+        // Rendah: tanpa filter anisotropik (Tex.make memasang 4 secara bawaan)
+        if (q === 'low') {
+          this.scene.traverse((o) => {
+            if (!o.material) return;
+            (Array.isArray(o.material) ? o.material : [o.material]).forEach((m) => ['map', 'emissiveMap', 'alphaMap'].forEach((k) => {
+              const t = m[k];
+              if (t && t.anisotropy !== 1) { t.anisotropy = 1; if (t.image && t.image.width) t.needsUpdate = true; }
+            }));
+          });
+        }
         UI.loading(0.8, 'Menyiapkan bengkel…');
         FX.init(this.scene);
         Showroom.init(r);
@@ -196,7 +209,8 @@ const Game = {
       this.headLight = new THREE.SpotLight(0xfff2dd, 2.2, 70, 0.5, 0.6, 1.2);
       this.scene.add(this.headLight); this.scene.add(this.headLight.target);
       this.glowLight = new THREE.PointLight(0xffffff, 0, 8, 2);
-      this.scene.add(this.glowLight);
+      // Rendah: tidak dimasukkan ke scene (PointLight intensitas 0 tetap dihitung di semua shader)
+      if (World.quality !== 'low') this.scene.add(this.glowLight);
     }
     this.headLight.intensity = World.T.beams ? 2.2 : 0;
     const g = entry.style.glow;

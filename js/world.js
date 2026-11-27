@@ -52,12 +52,16 @@ const World = {
     this.timeKey = TIMES[time] ? time : 'dusk';
     const T = (this.T = TIMES[this.timeKey]);
     this.walls = [];
+    // Rendah: jarak pandang pendek (camera.far, diatur main.js) → kabut cukup tebal agar batasnya tak terlihat
+    this.far = quality === 'low' ? 900 : 6000;
+    this.mountFollow = null;
 
     // ------------ langit, kabut, cahaya
     this.fogColor = new THREE.Color(T.fog);
     scene.background = this.fogColor.clone();
-    scene.fog = new THREE.FogExp2(T.fog, T.fogD * (quality === 'low' ? 1.3 : 1));
+    scene.fog = new THREE.FogExp2(T.fog, quality === 'low' ? Math.max(T.fogD * 1.3, 2 / (this.far * 0.94)) : T.fogD);
     this.sky = this._sky(T);
+    if (this.far < 2900) this.sky.scale.setScalar((this.far * 0.94) / 2900); // kubah langit tetap di dalam camera.far
     scene.add(this.sky);
     this.hemi = new THREE.HemisphereLight(T.hemiSky, T.hemiGround, T.hemiI);
     scene.add(this.hemi);
@@ -360,7 +364,11 @@ const World = {
 
     this.barrierGroup = new THREE.Group();
     scene.add(this.barrierGroup);
-    this._mountains(scene, T);
+    if (this.far < 2700) {
+      // Rendah: pegunungan diperkecil & ikut kamera agar tetap di dalam camera.far
+      this.mountFollow = this._mountains(scene, T, 0, 0, 2700);
+      this.mountFollow.scale.setScalar((this.far * 0.94) / 2700);
+    } else this._mountains(scene, T);
   },
 
   makeAsphalt(T) {
@@ -414,6 +422,9 @@ const World = {
     this.blinkMats.forEach((m, i) => { m.color.setHex((blink ? i % 2 === 0 : i % 2 === 1) ? 0xffaa00 : 0x221100); });
     if (cam) {
       this.sky.position.copy(cam.position);
+      // pegunungan yang ikut kamera; bila diperkecil (kualitas Rendah) diskalakan terhadap titik kamera → sudut pandang sama
+      const mf = this.mountFollow;
+      if (mf) mf.position.set(cam.position.x, cam.position.y * (1 - mf.scale.x), cam.position.z);
       // di dalam terowongan cahaya luar meredup
       const target = this.inTunnel(cam.position.x, cam.position.z) ? 0.18 : 1;
       this.lightK += (target - this.lightK) * Math.min(1, dt * 2.5);
@@ -514,8 +525,16 @@ const World = {
   // ------------ barikade balapan
   setBarriers(list) {
     this.clearBarriers();
+    // material, tekstur (Tex.get) & geometri lampu dipakai ulang tiap balapan → tidak bocor
     const tex = this._chevronTex();
-    const mat = new THREE.MeshStandardMaterial({ map: tex, emissiveMap: tex, emissive: 0xffffff, emissiveIntensity: 0.5, roughness: 0.6 });
+    const mat = this._barrierMat || (this._barrierMat = new THREE.MeshStandardMaterial({ map: tex, emissiveMap: tex, emissive: 0xffffff, emissiveIntensity: 0.5, roughness: 0.6 }));
+    if (!this._blinkPair) {
+      this._blinkPair = [new THREE.MeshBasicMaterial({ color: 0xffaa00 }), new THREE.MeshBasicMaterial({ color: 0xffaa00 })];
+      this._lampGeo = new THREE.BoxGeometry(0.35, 0.3, 0.35);
+      this._lampGeo.userData.shared = true;
+    }
+    this.blinkMats = this._blinkPair;
+    let li = 0;
     list.forEach((b) => {
       const w = b.x1 - b.x0, d = b.z1 - b.z0;
       const m = new THREE.Mesh(new THREE.BoxGeometry(w, 1.4, d), mat);
@@ -528,9 +547,7 @@ const World = {
       this.barrierMeshes.push(m);
       const n = Math.max(2, Math.floor(long / 6));
       for (let k = 0; k < n; k++) {
-        const lm = new THREE.MeshBasicMaterial({ color: 0xffaa00 });
-        this.blinkMats.push(lm);
-        const l = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.3, 0.35), lm);
+        const l = new THREE.Mesh(this._lampGeo, this._blinkPair[li++ % 2]); // kedip selang-seling seperti sebelumnya
         const t = (k + 0.5) / n;
         l.position.set(w > d ? b.x0 + w * t : (b.x0 + b.x1) / 2, 1.55, w > d ? (b.z0 + b.z1) / 2 : b.z0 + d * t);
         this.barrierGroup.add(l);
@@ -540,7 +557,7 @@ const World = {
     this.barriers = list;
   },
   clearBarriers() {
-    this.barrierMeshes.forEach((m) => { this.barrierGroup.remove(m); m.geometry.dispose(); });
+    this.barrierMeshes.forEach((m) => { this.barrierGroup.remove(m); if (!m.geometry.userData.shared) m.geometry.dispose(); });
     this.barrierMeshes = [];
     this.blinkMats = [];
     this.barriers = [];

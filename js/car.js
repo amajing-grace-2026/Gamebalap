@@ -369,8 +369,8 @@ const CarFactory = {
       color: new THREE.Color(st.paint), roughness: fin.rough, metalness: fin.metal,
       envMap: envM, envMapIntensity: fin.id === 'matte' ? 0.3 : 1.15,
     };
-    // cat mengkilap memakai lapisan clearcoat (seperti cat mobil asli)
-    const paint = fin.id === 'matte' ? new THREE.MeshStandardMaterial(paintOpts)
+    // cat mengkilap memakai lapisan clearcoat (seperti cat mobil asli); mobil lalu lintas (lite) cukup Standard
+    const paint = fin.id === 'matte' || opts.lite ? new THREE.MeshStandardMaterial(paintOpts)
       : new THREE.MeshPhysicalMaterial(Object.assign(paintOpts, { clearcoat: 1, clearcoatRoughness: fin.id === 'chrome' ? 0.02 : 0.06 }));
     if (fin.id === 'pearl') paint.emissive = new THREE.Color(st.paint).multiplyScalar(0.06);
 
@@ -651,8 +651,81 @@ const CarFactory = {
       });
     }
 
+    if (opts.lite) this._liteMerge(root, body, [entry.model, st.kit, st.spoiler, st.rim, car.special || ''].join('|'), { paint, glass, tailMat, rimMat });
+
     root.userData = { body, wheels, tailMat, flames, glow, beam, len: L, wid: Wd, wr, liveryTexs };
     return root;
+  },
+
+  // mobil lalu lintas (lite): semua bagian statis digabung per material → ±6 draw call per mobil
+  // (sebelumnya ±30). Roda lite polos tanpa palang sehingga putarannya tak terlihat → ikut digabung;
+  // objek pivot/spin tetap ada (kosong) agar kode lalu lintas tidak berubah. Geometri hasil gabungan
+  // di-cache per model+gaya (userData.shared → tidak di-dispose); cat & lampu rem tetap per mobil.
+  _liteMerge(root, body, key, M) {
+    const S = this.shared();
+    if (!S.lite) {
+      const mk = (o) => { const m = new THREE.MeshStandardMaterial(o); m.userData.shared = true; return m; };
+      S.lite = {
+        dark: mk({ vertexColors: true, roughness: 0.8, metalness: 0.3, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -1 }),
+        metal: mk({ vertexColors: true, roughness: 0.2, metalness: 0.9, envMap: World.envMap }),
+        geo: {},
+      };
+    }
+    const L = S.lite;
+    const slotOf = (m) => (m === M.paint ? 'paint' : m === M.glass ? 'glass' : m === S.head ? 'head' : m === M.tailMat ? 'tail'
+      : (m === S.dark || m === S.arch || m === S.tire || m === S.disc || (S.jadeBlack && m === S.jadeBlack)) ? 'dark'
+        : (m === S.chrome || m === M.rimMat) ? 'metal' : null);
+    root.updateMatrixWorld(true);
+    const parts = {}, drop = [];
+    root.traverse((o) => {
+      if (!o.isMesh || !o.visible || Array.isArray(o.material)) return;
+      const slot = slotOf(o.material);
+      if (!slot) return;
+      (parts[slot] = parts[slot] || []).push(o);
+      drop.push(o);
+    });
+    let G = L.geo[key];
+    if (!G) {
+      G = {};
+      Object.keys(parts).forEach((slot) => { G[slot] = this._mergeParts(parts[slot], slot === 'dark' || slot === 'metal'); });
+      L.geo[key] = G;
+    }
+    drop.forEach((o) => {
+      o.parent.remove(o);
+      const g = o.geometry;
+      if (g !== S.wheelGeo && g !== S.rimGeo && !g.userData.shared) g.dispose();
+    });
+    const mats = { paint: M.paint, glass: M.glass, head: S.head, tail: M.tailMat, dark: L.dark, metal: L.metal };
+    Object.keys(G).forEach((slot) => {
+      const m = new THREE.Mesh(G[slot], mats[slot]);
+      m.castShadow = slot === 'paint'; // bayangan hanya dari bodi
+      body.add(m);
+    });
+    M.rimMat.dispose();
+  },
+  // gabung geometri beberapa mesh (koordinat relatif root) jadi satu geometri non-indeks
+  _mergeParts(meshes, useCol) {
+    const pos = [], nor = [], col = useCol ? [] : null;
+    const v = new THREE.Vector3(), nm = new THREE.Matrix3();
+    meshes.forEach((o) => {
+      const g = o.geometry, P = g.attributes.position, Nn = g.attributes.normal, I = g.index, mw = o.matrixWorld;
+      const c = o.material.color;
+      nm.getNormalMatrix(mw);
+      const cnt = I ? I.count : P.count;
+      for (let k = 0; k < cnt; k++) {
+        const i = I ? I.getX(k) : k;
+        v.fromBufferAttribute(P, i).applyMatrix4(mw); pos.push(v.x, v.y, v.z);
+        if (Nn) { v.fromBufferAttribute(Nn, i).applyMatrix3(nm).normalize(); nor.push(v.x, v.y, v.z); } else nor.push(0, 1, 0);
+        if (col) col.push(c.r, c.g, c.b);
+      }
+    });
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    geo.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+    if (col) geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+    geo.computeBoundingSphere();
+    geo.userData.shared = true;
+    return geo;
   },
 
   vinylTex(type, color, paint) {
@@ -715,7 +788,7 @@ const CarFactory = {
         if (o.userData.noDispose) return; // geometri model .glb dipakai bersama
         if (o.geometry !== S.wheelGeo && o.geometry !== S.rimGeo && !o.geometry.userData.shared) o.geometry.dispose();
         const m = o.material;
-        if (m && ![S.tire, S.dark, S.chrome, S.head, S.arch, S.disc, S.caliper, S.shadowMat, S.beamMat, S.flameMat].includes(m)) {
+        if (m && !(m.userData && m.userData.shared) && ![S.tire, S.dark, S.chrome, S.head, S.arch, S.disc, S.caliper, S.shadowMat, S.beamMat, S.flameMat].includes(m)) {
           if (m.map && !m.map._shared && m.map !== S.glowTex && m.map !== S.shadowTex && m.map !== S.beamTex) m.map.dispose();
           m.dispose();
         }

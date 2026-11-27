@@ -8,7 +8,7 @@ const DATA = {};
 DATA.CARS = [
   // Mobil dari foto mainan pemain: supercar mesin tengah hijau mint, kanopi kaca biru, atap belakang hitam
   { id: 'jade', name: 'Jade Blade RS', maker: 'Jade', cls: 'D', price: 18000, desc: 'Supercar mungil hijau mint — mobil pertamamu.',
-    accel: 6.9, top: 196, grip: 1.04, handling: 1.08, special: 'jade',
+    accel: 6.5, top: 192, grip: 1.0, handling: 1.08, special: 'jade',
     shape: { len: 4.45, wid: 1.92, hgt: 0.5, clear: 0.16, nose: 1.35, tail: 0.3, cabLen: 1.75, cabOff: 0.0, cabH: 0.5, ws: 1.0, rs: 0.05, wr: 0.36 } },
   { id: 'pixel', name: 'Kogane Pixel', maker: 'Kogane', cls: 'D', price: 9000, desc: 'Hatchback lincah, gampang dikendalikan.',
     accel: 6.2, top: 178, grip: 1.0, handling: 1.12,
@@ -45,7 +45,7 @@ DATA.CARS = [
 ];
 DATA.carById = (id) => DATA.CARS.find((c) => c.id === id);
 DATA.STARTERS = ['pixel', 'vespera', 'rondo'];
-DATA.CLASS_FACTOR = { D: 1, C: 1.3, B: 1.7, A: 2.2, S: 3, T: 1 };
+DATA.CLASS_FACTOR = { D: 1.3, C: 1.3, B: 1.7, A: 2.2, S: 3, T: 1 };
 
 DATA.PARTS = {
   engine:     { name: 'Mesin',            desc: 'Akselerasi & top speed naik',        prices: [1500, 4500, 11000] },
@@ -53,7 +53,7 @@ DATA.PARTS = {
   nitro:      { name: 'Nitrous (NOS)',    desc: 'Kapasitas & daya dorong nitro',      prices: [1200, 3500, 8000] },
   tires:      { name: 'Ban',              desc: 'Cengkeraman di tikungan',            prices: [800, 2500, 6000] },
   suspension: { name: 'Suspensi',         desc: 'Respons setir lebih tajam',          prices: [1000, 3000, 7000] },
-  weight:     { name: 'Pengurangan Bobot',desc: 'Lebih ringan, lebih gesit',          prices: [900, 2800, 6500] },
+  weight:     { name: 'Pengurangan Bobot',desc: 'Akselerasi & kelincahan',            prices: [900, 2800, 6500] },
   gearbox:    { name: 'Transmisi',        desc: 'Perpindahan gigi lebih cepat',       prices: [1100, 3200, 7500] },
 };
 DATA.PART_LEVELS = ['Standar', 'Jalanan', 'Sport', 'Ekstrem'];
@@ -176,7 +176,7 @@ DATA.TIER = {
   1: { money: [2500, 1200, 600], rep: [120, 60, 30], skill: 0.84, cars: ['pixel', 'vespera', 'rondo'], up: [0, 0] },
   2: { money: [5000, 2500, 1200], rep: [220, 110, 50], skill: 0.9, cars: ['kitsune', 'bravado', 'vespera', 'rondo'], up: [0, 1] },
   3: { money: [9000, 4500, 2200], rep: [360, 180, 80], skill: 0.96, cars: ['hayate', 'orion', 'bravado', 'kitsune'], up: [1, 2] },
-  4: { money: [22000, 10000, 4500], rep: [900, 400, 200], skill: 1.03, cars: ['spectre', 'orion', 'hayate', 'nebula'], up: [2, 3] },
+  4: { money: [22000, 10000, 4500], rep: [900, 400, 200], skill: 0.97, cars: ['spectre', 'orion', 'hayate'], up: [1, 2] },
 };
 DATA.TYPE_INFO = {
   circuit: { name: 'Sirkuit', color: '#ffb000', icon: '⟳' },

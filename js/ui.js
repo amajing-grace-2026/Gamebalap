@@ -83,12 +83,70 @@ const UI = {
 
     // ---- sentuh
     this.isTouch = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
+    // tombol sekali-tekan = tombol keyboard yang sama (lewat Game.onKey, jadi aturan jeda/state ikut berlaku)
+    const TAP_KEY = { act: 'KeyE', reset: 'KeyR', cam: 'KeyC' };
     document.querySelectorAll('#touch button').forEach((b) => {
       const k = b.dataset.k;
-      const on = (e) => { e.preventDefault(); b.classList.add('on'); if (k === 'act') this.g.onKey('KeyE'); else Input.touch[k] = true; };
-      const off = (e) => { e.preventDefault(); b.classList.remove('on'); Input.touch[k] = false; };
+      if (k === 'left' || k === 'right') return; // setir ditangani di bawah (bisa digeser)
+      const on = (e) => {
+        e.preventDefault(); b.classList.add('on');
+        if (TAP_KEY[k]) {
+          this.g.onKey(TAP_KEY[k]);
+          if (k === 'cam') this.$('set-cam').value = this.g.settings.cam;
+        } else Input.touch[k] = true;
+      };
+      const off = (e) => { e.preventDefault(); b.classList.remove('on'); if (!TAP_KEY[k]) Input.touch[k] = false; };
       b.addEventListener('pointerdown', on); b.addEventListener('pointerup', off); b.addEventListener('pointerleave', off); b.addEventListener('pointercancel', off);
     });
+    // setir ◀▶: jempol bisa digeser dari ◀ ke ▶ tanpa diangkat. Pointer capture implisit (sentuhan)
+    // dilepas saat pointerdown, lalu tiap jari dilacak dan tombol di bawahnya dicari ulang.
+    // Tiap pointer terpisah, jadi gas/rem di tangan kanan tetap jalan bersamaan (multi-touch).
+    const steerBox = document.querySelector('#touch .t-left');
+    const steerBtns = [...steerBox.querySelectorAll('button')];
+    const steerPtr = new Map(); // pointerId → 'left' | 'right' | null
+    const steerAt = (x, y) => {
+      const el = document.elementFromPoint(x, y);
+      const hit = el && el.closest ? el.closest('.t-left button') : null;
+      if (hit) return hit.dataset.k;
+      // di celah antar tombol / sedikit meleset: tetap dihitung, pilih sisi terdekat
+      const r = steerBox.getBoundingClientRect(), pad = 28;
+      if (x < r.left - pad || x > r.right + pad || y < r.top - pad || y > r.bottom + pad) return null;
+      return x < r.left + r.width / 2 ? 'left' : 'right';
+    };
+    const steerSync = () => {
+      let l = false, rt = false;
+      steerPtr.forEach((k) => { if (k === 'left') l = true; else if (k === 'right') rt = true; });
+      Input.touch.left = l; Input.touch.right = rt;
+      steerBtns.forEach((b) => b.classList.toggle('on', b.dataset.k === 'left' ? l : rt));
+    };
+    steerBox.addEventListener('pointerdown', (e) => {
+      const b = e.target.closest('button'); if (!b) return;
+      e.preventDefault();
+      try { b.releasePointerCapture(e.pointerId); } catch (er) { /* tidak ada capture */ }
+      steerPtr.set(e.pointerId, b.dataset.k);
+      steerSync();
+    });
+    addEventListener('pointermove', (e) => {
+      if (!steerPtr.has(e.pointerId)) return;
+      const k = steerAt(e.clientX, e.clientY);
+      if (k !== steerPtr.get(e.pointerId)) { steerPtr.set(e.pointerId, k); steerSync(); }
+    }, { passive: true });
+    const steerEnd = (e) => { if (steerPtr.delete(e.pointerId)) steerSync(); };
+    addEventListener('pointerup', steerEnd);
+    addEventListener('pointercancel', steerEnd);
+    addEventListener('blur', () => { steerPtr.clear(); steerSync(); });
+    // cegah menu tahan-lama / klik kanan di area main
+    ['touch', 'hud', 'game'].forEach((id) => this.$(id).addEventListener('contextmenu', (e) => e.preventDefault()));
+    // ukuran angka dial speedo mengikuti ukuran tampil kanvas (HP: 130 px)
+    addEventListener('resize', () => { this._spFont = 0; });
+  },
+  spFontPx() {
+    if (!this._spFont) {
+      const w = this.el['speedo-c'].clientWidth;
+      if (!w) return 10;
+      this._spFont = Math.min(20, Math.max(10, Math.round(2400 / w)));
+    }
+    return this._spFont;
   },
 
   // ------------------------------------------------------------ dasar
@@ -185,6 +243,7 @@ const UI = {
   hudMode(mode) {
     this.$('hud').classList.toggle('hidden', mode === 'none');
     this.$('touch').classList.toggle('hidden', mode === 'none' || !this.isTouch);
+    this._spFont = 0; // ukur ulang dial speedo setelah HUD tampil
     this.el['hud-roam'].classList.toggle('hidden', mode !== 'roam');
     this.el['hud-race'].classList.toggle('hidden', mode !== 'race');
     this.el['drift-box'].classList.add('hidden');
@@ -307,7 +366,7 @@ const UI = {
       c.beginPath(); c.arc(cx, cy, R - 14, a0 + (a1 - a0) * 0.55, a0 + (a1 - a0) * 0.8); c.stroke();
     }
     c.fillStyle = 'rgba(255,255,255,0.5)';
-    c.font = '10px Orbitron, Arial'; c.textAlign = 'center'; c.textBaseline = 'middle';
+    c.font = this.spFontPx() + 'px Orbitron, Arial'; c.textAlign = 'center'; c.textBaseline = 'middle';
     for (let i = 0; i <= 9; i++) {
       const a = a0 + (a1 - a0) * (i / 9);
       c.fillText(String(i), cx + Math.cos(a) * (R - 22), cy + Math.sin(a) * (R - 22));
@@ -537,8 +596,12 @@ const UI = {
       <div class="kv"><span>Reputasi</span><b>+${tier.rep[0]} REP</b></div>
       ${ev.type === 'drift' ? `<div class="kv"><span>Target emas</span><b>${ev.targets[0].toLocaleString('id-ID')} poin</b></div>` : ''}
       <div class="kv"><span>Rekor kamu</span><b>${best ? (ev.type === 'drift' ? best.toLocaleString('id-ID') + ' poin' : U.fmtTime(best)) : '-'}</b></div>
-      ${ev.type === 'drag' ? '<p class="small muted">Drag memakai transmisi MANUAL: <kbd>E</kbd> naik gigi, <kbd>Q</kbd> turun gigi. Oper saat lampu hijau!</p>' : ''}
-      ${ev.type === 'drift' ? '<p class="small muted">Gunakan rem tangan (<kbd>Spasi</kbd>) dan gas untuk drift. Drift panjang = pengali skor. Menabrak = skor rantai hangus.</p>' : ''}
+      ${ev.type === 'drag' ? (this.isTouch
+        ? '<p class="small muted">Drag memakai transmisi MANUAL: tekan tombol <kbd>E</kbd> di layar untuk naik gigi. Oper saat lampu hijau!</p>'
+        : '<p class="small muted">Drag memakai transmisi MANUAL: <kbd>E</kbd> naik gigi, <kbd>Q</kbd> turun gigi. Oper saat lampu hijau!</p>') : ''}
+      ${ev.type === 'drift' ? (this.isTouch
+        ? '<p class="small muted">Tahan <kbd>REM TANGAN</kbd> sambil <kbd>GAS</kbd> dan setir untuk drift. Drift panjang = pengali skor. Menabrak = skor rantai hangus.</p>'
+        : '<p class="small muted">Gunakan rem tangan (<kbd>Spasi</kbd>) dan gas untuk drift. Drift panjang = pengali skor. Menabrak = skor rantai hangus.</p>') : ''}
       ${locked ? `<p class="lock">🔒 Butuh ${ev.req} REP (kamu: ${d.rep})</p>` : ''}
       <div class="ev-actions">
         <button class="btn primary" id="ev-start" ${locked ? 'disabled' : ''}>MULAI BALAPAN</button>
@@ -579,8 +642,8 @@ const UI = {
     const inRace = g.state === 'race';
     this.$('pause-title').textContent = inRace ? 'BALAPAN DIJEDA' : 'MENU';
     const btns = inRace
-      ? [['LANJUTKAN', 'resume', 'primary'], ['ULANGI BALAPAN', 'restart'], ['KELUAR BALAPAN', 'quit', 'danger'], ['LAGU BERIKUTNYA ♪', 'music'], ['PENGATURAN', 'settings'], ['KONTROL', 'help'], ['⏻ KELUAR GAME', 'exit', 'danger']]
-      : [['LANJUTKAN', 'resume', 'primary'], ['PETA & EVENT', 'map'], ['KE GARASI', 'garage', 'cyan'], ['PAPAN PERINGKAT', 'leader'], ['LAGU BERIKUTNYA ♪', 'music'], ['PENGATURAN', 'settings'], ['KONTROL', 'help'], ['SIMPAN & KE MENU AWAL', 'logout'], ['⏻ KELUAR GAME', 'exit', 'danger']];
+      ? [['LANJUTKAN', 'resume', 'primary'], ['↺ KEMBALIKAN MOBIL KE JALAN', 'reset'], ['ULANGI BALAPAN', 'restart'], ['KELUAR BALAPAN', 'quit', 'danger'], ['LAGU BERIKUTNYA ♪', 'music'], ['PENGATURAN', 'settings'], ['KONTROL', 'help'], ['⏻ KELUAR GAME', 'exit', 'danger']]
+      : [['LANJUTKAN', 'resume', 'primary'], ['↺ KEMBALIKAN MOBIL KE JALAN', 'reset'], ['PETA & EVENT', 'map'], ['KE GARASI', 'garage', 'cyan'], ['PAPAN PERINGKAT', 'leader'], ['LAGU BERIKUTNYA ♪', 'music'], ['PENGATURAN', 'settings'], ['KONTROL', 'help'], ['SIMPAN & KE MENU AWAL', 'logout'], ['⏻ KELUAR GAME', 'exit', 'danger']];
     const box = this.$('pause-btns');
     box.innerHTML = btns.map(([t, a, c]) => `<button class="btn ${c || ''}" data-a="${a}">${t}</button>`).join('');
     box.querySelectorAll('button').forEach((b) => b.onclick = () => this.pauseAction(b.dataset.a));
@@ -590,6 +653,7 @@ const UI = {
   pauseAction(a) {
     const g = this.g;
     if (a === 'resume') this.closeOverlay('pause');
+    else if (a === 'reset') { this.closeOverlay('pause'); g.resetPlayer(); }
     else if (a === 'restart') { this.closeOverlay('pause'); g.restartRace(); }
     else if (a === 'quit') { this.closeOverlay('pause'); g.endRace(true); }
     else if (a === 'map') this.openMap();

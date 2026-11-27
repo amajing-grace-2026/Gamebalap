@@ -211,6 +211,10 @@ const Race = {
   ai: [],
 
   start(ev, game) {
+    // batalkan timer hasil dari balapan sebelumnya; id balapan baru membuat timer lama tidak berlaku
+    clearTimeout(this._finishTimer); this._finishTimer = null;
+    this._raceId = (this._raceId || 0) + 1;
+    this.spinTime = 0; this._offT = 0;
     this.game = game;
     this.ev = ev;
     const tier = DATA.TIER[ev.tier];
@@ -239,8 +243,11 @@ const Race = {
     this.ai = [];
     const nOpp = ev.type === 'drift' ? 0 : ev.opp || 3;
     const rivals = DATA.RIVALS.slice().sort(() => Math.random() - 0.5);
+    // daftar mobil tier diacak (Fisher-Yates) agar semua mobil bisa muncul, tanpa duplikat bila cukup
+    const pool = tier.cars.slice();
+    for (let i = pool.length - 1; i > 0; i--) { const j = U.randi(0, i); const tmp = pool[i]; pool[i] = pool[j]; pool[j] = tmp; }
     for (let k = 0; k < nOpp; k++) {
-      const model = tier.cars[k % tier.cars.length];
+      const model = pool[k % pool.length];
       const lv = U.randi(tier.up[0], tier.up[1]);
       const entry = DATA.newCarEntry(model, U.pick(DATA.STYLE.paints));
       Object.keys(entry.up).forEach((p) => { entry.up[p] = Math.min(3, lv + (ev.tier > 1 && Math.random() < 0.25 ? 1 : 0)); });
@@ -280,7 +287,7 @@ const Race = {
       v.frozen = true;
       v.manual = isDrag ? true : (v === player ? game.settings.trans === 'manual' : false);
       v.powerMul = 1;
-      v.track = { s: sl.s, seg: -1, lap: 0, total: sl.s, finished: false, time: 0, lat: sl.lat, lapTimes: [] };
+      v.track = { s: sl.s, seg: -1, lap: 0, total: sl.s, finished: false, time: 0, lat: sl.lat, lapTimes: [], run: 0, off: 0 };
       const pr = this.path.project(v.x, v.z, -1);
       v.track.seg = pr.seg;
       if (v !== player) this.ai.push(new AIDriver(v, this, sl.lat, tier.skill));
@@ -338,24 +345,42 @@ const Race = {
     const lat = v === this.game.player ? 0 : (this.ai.find((a) => a.v === v) || { lane: 0 }).lane;
     v.place(p.x + (-d.z) * lat, p.z + d.x * lat, Math.atan2(d.x, d.z));
     v.gear = 1;
+    // cari lintasan lokal mulai dari titik progres (bukan posisi lama mobil)
+    v.track.seg = this.path._seg(this.path._norm(s));
+    v.track.run = 0; v.track.off = 0;
   },
 
   _track(v, dt) {
     const t = v.track;
+    const L = this.path.length;
     const pr = this.path.project(v.x, v.z, t.seg);
     const prevS = t.s;
     t.seg = pr.seg;
     t.lat = pr.lat;
-    if (this.ev.loop) {
-      const L = this.path.length;
-      if (pr.s < prevS - L / 2) t.lap++;
-      else if (pr.s > prevS + L / 2) t.lap--;
+    // anti potong jalan: progres hanya diterima bila mobil dekat lintasan (setengah lebar jalan + 14 m)
+    // dan tidak melebihi jarak yang benar-benar ditempuh (+5 m). Keluar sedikit di tikungan = progres
+    // dibekukan sementara; jarak tempuh tetap dihitung sehingga progres menyusul saat kembali ke lintasan.
+    t.run = (t.run || 0) + v.speed * dt;
+    let ds = pr.s - prevS;
+    if (this.ev.loop) { if (ds > L / 2) ds -= L; else if (ds < -L / 2) ds += L; }
+    let ok = pr.dist < World.W / 2 + 14 && ds <= t.run + 5;
+    if (!this.ev.loop && ds < -60) ok = false; // cegah lompatan besar (mis. jalur yang berdekatan)
+    if (ok) {
+      if (this.ev.loop) {
+        const raw = prevS + ds;
+        if (raw >= L) t.lap++; else if (raw < 0) t.lap--;
+      }
       t.s = pr.s;
-      t.total = t.lap * L + t.s;
-    } else {
-      // cegah lompatan besar (mis. jalur yang berdekatan)
-      if (Math.abs(pr.s - prevS) < 60) t.s = pr.s;
-      t.total = t.s;
+      t.run = 0;
+      t.off = 0;
+    } else t.off = (t.off || 0) + dt;
+    t.total = this.ev.loop ? t.lap * L + t.s : t.s;
+    // peringatan bila pemain lama di luar lintasan (progres beku)
+    if (v === this.game.player && this.state === 'racing' && !t.finished) {
+      if (t.off > 3) {
+        this._offT = (this._offT || 0) - dt;
+        if (this._offT <= 0) { this._offT = 1; UI.banner('KEMBALI KE LINTASAN', 'Progres dibekukan · tekan R / ↺ untuk kembali ke jalur', 1.2); }
+      } else this._offT = 0;
     }
     if (!t.finished && t.total >= this.finishDist) {
       t.finished = true;
@@ -391,12 +416,15 @@ const Race = {
         AudioSys.beep(880, 0.45, 0.3);
         this.cars.forEach((v) => { v.frozen = false; });
         // start sempurna (drag & semua mode): rpm di zona hijau
-        if (player.rpm > 0.55 && player.rpm < 0.8) { player.launch = 1.2; UI.popText('START SEMPURNA!', '#7cff00'); } else if (player.rpm >= 0.92) { UI.popText('Ban selip...', '#ff6a00'); player.launch = -0.5; }
+        if (player.rpm > 0.55 && player.rpm < 0.8) { player.launch = 1.2; UI.popText('START SEMPURNA!', '#7cff00'); } else if (player.rpm >= 0.92) { UI.popText('Ban selip...', '#ff6a00'); this.spinTime = 0.5; }
         this.ai.forEach((a) => { if (Math.random() < 0.5 + a.skill * 0.3) a.v.launch = 0.8; });
       }
     } else if (this.state === 'racing' || this.state === 'finished') {
       this.time += dt;
     }
+    // hukuman ban selip saat start: gas pemain dipotong selama 0,5 detik
+    // (input pemain sudah dibaca main.js sebelum Race.update, jadi aman diubah di sini)
+    if (this.spinTime > 0) { this.spinTime -= dt; player.inp.throttle *= 0.3; }
     this.ai.forEach((a) => { if (this.state !== 'countdown') a.update(dt); else { a.v.inp.throttle = Math.random() < 0.7 ? 0.7 : 0; } });
     // rubber band ringan
     if (this.state === 'racing') {
@@ -463,11 +491,14 @@ const Race = {
       if (D.chain > 0) { D.score += Math.round(D.chain * D.mult); D.chain = 0; }
     }
     UI.banner(this.ev.type === 'drift' ? 'SELESAI!' : 'FINISH!', '', 2);
-    setTimeout(() => this.finish(), 2200);
+    const id = this._raceId;
+    clearTimeout(this._finishTimer);
+    this._finishTimer = setTimeout(() => { this._finishTimer = null; if (this._raceId === id) this.finish(); }, 2200);
     p.inp.throttle = 0;
   },
 
-  finish() {
+  // silent = hitung & simpan hadiah tanpa membuka layar hasil (dipakai end() saat pemain keluar di jeda finis)
+  finish(silent) {
     if (!this.active || this.results) return;
     const ev = this.ev, tier = DATA.TIER[ev.tier];
     const player = this.game.player;
@@ -508,15 +539,30 @@ const Race = {
     if (ev.type === 'drift') { if (!d.best[bestKey] || this.drift.score > d.best[bestKey]) { d.best[bestKey] = this.drift.score; newBest = true; } } else if (!d.best[bestKey] || player.track.time < d.best[bestKey]) { d.best[bestKey] = Math.round(player.track.time * 100) / 100; newBest = true; }
     DB.save(true);
     this.results = { place, rows, money, rep, newBest, bestLap: this.bestLap };
+    if (silent) { UI.toast('Hadiah balapan: +' + U.fmtMoney(money) + ' · +' + rep + ' REP', 'good'); return; }
     UI.showResults(ev, this.results);
     if (place === 1) AudioSys.cash();
   },
 
   end() {
     if (!this.active) return;
+    clearTimeout(this._finishTimer); this._finishTimer = null;
+    // pemain sudah finis tapi keluar/ulangi sebelum layar hasil muncul: hadiah tetap dihitung & disimpan
+    const pl = this.game.player;
+    if (!this.results && pl && pl.track && pl.track.finished) this.finish(true);
+    this._raceId = (this._raceId || 0) + 1;
     this.active = false;
     World.clearBarriers();
-    if (this.gate) { this.game.scene.remove(this.gate); this.gate = null; }
+    if (this.gate) {
+      // gerbang dibuat baru tiap balapan (tekstur kanvas, material, geometri) → bebaskan agar memori GPU tidak naik terus
+      this.game.scene.remove(this.gate);
+      this.gate.traverse((o) => {
+        if (o.geometry) o.geometry.dispose();
+        const m = o.material;
+        if (m) { if (m.map) m.map.dispose(); m.dispose(); }
+      });
+      this.gate = null;
+    }
     this.cars.forEach((v) => {
       if (v !== this.game.player) { this.game.scene.remove(v.mesh); CarFactory.dispose(v.mesh); }
     });

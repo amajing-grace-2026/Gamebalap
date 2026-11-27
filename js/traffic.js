@@ -279,20 +279,23 @@ const FX = {
   init(scene) {
     const smokeTex = Tex.radial('rgba(200,200,220,0.55)', 'rgba(200,200,220,0)', 64);
     const sparkTex = Tex.radial('rgba(255,220,120,1)', 'rgba(255,120,0,0)', 32);
-    for (let i = 0; i < 180; i++) {
-      const spark = i >= 150;
+    // kualitas Rendah: pool lebih kecil (60 = 45 asap + 15 percikan)
+    const low = World.quality === 'low';
+    this.nSmoke = low ? 45 : 150; this.nAll = low ? 60 : 180;
+    for (let i = 0; i < this.nAll; i++) {
+      const spark = i >= this.nSmoke;
       const m = new THREE.SpriteMaterial({ map: spark ? sparkTex : smokeTex, transparent: true, depthWrite: false, blending: spark ? THREE.AdditiveBlending : THREE.NormalBlending, opacity: 0 });
       const s = new THREE.Sprite(m);
       s.visible = false;
       scene.add(s);
       this.pool.push({ s, m, life: 0, max: 1, vx: 0, vy: 0, vz: 0, spark, size: 1 });
     }
-    this.next = 0; this.nextSpark = 150;
+    this.next = 0; this.nextSpark = this.nSmoke;
   },
   smoke(x, z, amount, tint) {
     if (!this.pool.length) return;
     const p = this.pool[this.next];
-    this.next = this.next + 1 >= 150 ? 0 : this.next + 1;
+    this.next = this.next + 1 >= this.nSmoke ? 0 : this.next + 1;
     p.s.position.set(x + U.rand(-0.3, 0.3), 0.4 + World.heightAt(x, z), z + U.rand(-0.3, 0.3));
     p.vx = U.rand(-0.8, 0.8); p.vy = U.rand(0.6, 1.4); p.vz = U.rand(-0.8, 0.8);
     p.life = p.max = 1.2 + amount;
@@ -303,7 +306,7 @@ const FX = {
   sparks(x, y, z, n) {
     for (let i = 0; i < n; i++) {
       const p = this.pool[this.nextSpark];
-      this.nextSpark = this.nextSpark + 1 >= 180 ? 150 : this.nextSpark + 1;
+      this.nextSpark = this.nextSpark + 1 >= this.nAll ? this.nSmoke : this.nextSpark + 1;
       p.s.position.set(x, y, z);
       p.vx = U.rand(-7, 7); p.vy = U.rand(1, 6); p.vz = U.rand(-7, 7);
       p.life = p.max = U.rand(0.25, 0.6);

@@ -41,8 +41,8 @@ const MalangWorld = {
         s.target.position.set(x, y, z);
       },
       update(dt, t, cam) {
-        baseUpdate(dt, t, cam);
-        if (cam && self.mount) self.mount.position.set(cam.position.x, 0, cam.position.z);
+        baseUpdate(dt, t, cam); // pegunungan ikut kamera lewat World.mountFollow
+        self._tileTick(dt, cam);
       },
     });
 
@@ -404,13 +404,22 @@ const MalangWorld = {
       if (!r) return null;
       return Object.assign({ id, type, name: r.name, tier, req, opp: 3, loop: !!r.loop, path: pts(r), desc: r.desc, len: r.len, up: r.up, maxGrade: r.maxGrade }, extra || {});
     };
+    // varian arah balik untuk rute A→B: titik start berbeda, jadi penanda event tidak menumpuk
+    const rev = (re, extra) => {
+      const r = find(re);
+      return r && !r.loop ? Object.assign({ path: pts(r).slice().reverse() }, extra) : null;
+    };
+    // syarat REP Malang (240/900/1700) bisa dicapai dengan menang tiap event sekali, tanpa harus mengulang
     return [
       mk('mlg-s1', 'sprint', /Soekarno/, 1, 0),
       mk('mlg-g1', 'drag', /Drag/, 1, 0),
-      mk('mlg-c1', 'circuit', /Kampus/, 2, 400, { laps: 1 }),
-      mk('mlg-d1', 'drift', /Soekarno/, 2, 400, { id: 'mlg-d1', name: 'Drift Soekarno-Hatta', opp: 0, targets: [3500, 2300, 1300] }),
-      mk('mlg-c2', 'circuit', /Ijen/, 3, 1200, { laps: 1 }),
-      mk('mlg-s2', 'sprint', /Tlogomas/, 4, 2500, { name: 'GRAND FINAL: Tanjakan Tlogomas' }),
+      rev(/Soekarno/) && mk('mlg-s1r', 'sprint', /Soekarno/, 1, 0, rev(/Soekarno/, { name: 'Sprint Soekarno-Hatta (Arah Balik)' })),
+      mk('mlg-c1', 'circuit', /Kampus/, 2, 240, { laps: 1 }),
+      mk('mlg-d1', 'drift', /Soekarno/, 2, 240, { id: 'mlg-d1', name: 'Drift Soekarno-Hatta', opp: 0, targets: [6000, 4000, 2500] }),
+      rev(/Drag/) && mk('mlg-g2', 'drag', /Drag/, 2, 240, rev(/Drag/, { name: 'Drag Ijen (Arah Balik)' })),
+      mk('mlg-c2', 'circuit', /Ijen/, 3, 900, { laps: 1 }),
+      rev(/Tlogomas/) && mk('mlg-s3', 'sprint', /Tlogomas/, 3, 900, rev(/Tlogomas/, { name: 'Turunan Tlogomas', desc: 'Rute Tlogomas dari atas: turunan cepat, rem tepat waktu di tikungan.' })),
+      mk('mlg-s2', 'sprint', /Tlogomas/, 4, 1700, { name: 'GRAND FINAL: Tanjakan Tlogomas' }),
     ].filter(Boolean);
   },
 
@@ -422,6 +431,8 @@ const MalangWorld = {
     const shadows = quality !== 'low';
     const lin = (hex) => new THREE.Color(hex).convertSRGBToLinear();
     const dark = night ? 0.32 : dusk ? 0.78 : 1;
+    this.tiled = [];
+    this.shadows = shadows;
 
     // ---- medan
     {
@@ -449,7 +460,7 @@ const MalangWorld = {
       for (let k = 0; k < 2500; k++) { g.fillStyle = `rgba(${Math.random() < 0.5 ? '255,255,255' : '0,0,0'},0.05)`; g.fillRect(Math.random() * 128, Math.random() * 512, 2, 2); }
       g.fillStyle = '#e8e8e0'; g.fillRect(5, 0, 4, 512); g.fillRect(119, 0, 4, 512);
       g.fillStyle = '#f2f2ea'; g.fillRect(62, 0, 4, 230);
-      const t = Tex.make(c, true); t.anisotropy = 8; return t;
+      const t = Tex.make(c, true); t.anisotropy = quality === 'low' ? 1 : 8; return t;
     })();
     const asph = new THREE.MeshStandardMaterial({
       map: roadTex, color: night ? 0x9a9aa6 : 0xffffff, roughness: T.wet ? 0.55 : 0.88, metalness: T.wet ? 0.1 : 0.02,
@@ -531,12 +542,10 @@ const MalangWorld = {
       const cnt = new Map(), wOf = new Map();
       D.roads.forEach((r) => r.chain.forEach((i) => { cnt.set(i, (cnt.get(i) || 0) + 1); wOf.set(i, Math.max(wOf.get(i) || 0, r.w)); }));
       const jn = [...cnt.entries()].filter(([, c]) => c >= 2).map(([i]) => i);
-      const disc = new THREE.InstancedMesh(new THREE.CircleGeometry(1, 20).rotateX(-Math.PI / 2),
-        new THREE.MeshStandardMaterial({ color: lin(0x3b3d42).multiplyScalar(night ? 0.75 : 1), roughness: 0.88, envMap: World.envMap, envMapIntensity: T.wet ? 0.5 : 0.15 }), jn.length);
-      const m = new THREE.Matrix4();
-      jn.forEach((i, k) => { const p = P[i], r = wOf.get(i) / 2 + 0.6; m.makeScale(r, 1, r).setPosition(p[0], p[1] + 0.085, p[2]); disc.setMatrixAt(k, m); });
-      disc.receiveShadow = shadows;
-      scene.add(disc);
+      this._tiled(scene, new THREE.CircleGeometry(1, 20).rotateX(-Math.PI / 2),
+        new THREE.MeshStandardMaterial({ color: lin(0x3b3d42).multiplyScalar(night ? 0.75 : 1), roughness: 0.88, envMap: World.envMap, envMapIntensity: T.wet ? 0.5 : 0.15 }), jn.length,
+        (k, m) => { const p = P[jn[k]], r = wOf.get(jn[k]) / 2 + 0.6; m.makeScale(r, 1, r).setPosition(p[0], p[1] + 0.085, p[2]); },
+        { receive: shadows });
     }
     // jalan kampung / jalan lain
     {
@@ -558,7 +567,6 @@ const MalangWorld = {
     // ---- rumah & gedung (instanced, jendela menyala di malam/senja)
     {
       const B = D.buildings, keep = this.keep;
-      const n = keep.reduce((a, b) => a + b, 0);
       const win = (() => {
         const c = Tex.canvas(64, 64), e = Tex.canvas(64, 64), g = c.getContext('2d'), ge = e.getContext('2d');
         g.fillStyle = '#ffffff'; g.fillRect(0, 0, 64, 64);
@@ -573,55 +581,51 @@ const MalangWorld = {
       })();
       const side = new THREE.MeshStandardMaterial({ map: win.map, emissiveMap: win.emi, emissive: 0xffffff, emissiveIntensity: night ? 0.6 : dusk ? 0.35 : 0, roughness: 0.85, color: new THREE.Color(dark, dark, dark) });
       const roof = new THREE.MeshStandardMaterial({ color: lin(0x9a5a3c).multiplyScalar(dark), roughness: 0.9 });
+      // kotak dengan 2 grup saja (dinding, atap datar) → 2 draw call per petak, bukan 6
       const geo = new THREE.BoxGeometry(1, 1, 1).translate(0, 0.5, 0);
-      const im = new THREE.InstancedMesh(geo, [side, side, roof, side, side, side], n);
+      {
+        const I = geo.index.array, walls = [], top = [];
+        geo.groups.forEach((gr) => { for (let i = gr.start; i < gr.start + gr.count; i++) (gr.materialIndex === 2 ? top : walls).push(I[i]); });
+        geo.setIndex(walls.concat(top)); geo.clearGroups();
+        geo.addGroup(0, walls.length, 0); geo.addGroup(walls.length, top.length, 1);
+      }
       const HOUSE = [0xe9e2d0, 0xd8c9a8, 0xc9d3d6, 0xf0d9c4, 0xbfc7b3, 0xe2d5e0].map(lin);
-      const m = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), p = new THREE.Vector3(), Y = new THREE.Vector3(0, 1, 0);
-      let k = 0;
-      B.forEach((b, i) => {
-        if (!keep[i]) return;
+      const q = new THREE.Quaternion(), s = new THREE.Vector3(), p = new THREE.Vector3(), Y = new THREE.Vector3(0, 1, 0);
+      const kept = [];
+      B.forEach((b, i) => { if (keep[i]) kept.push(b); });
+      this._tiled(scene, geo, [side, roof], kept.length, (k, m, c) => {
+        const b = kept[k];
         q.setFromAxisAngle(Y, b[6]); s.set(b[3], b[5] + 1, b[4]); p.set(b[0], b[1] - 1, b[2]);
-        m.compose(p, q, s); im.setMatrixAt(k, m); im.setColorAt(k, HOUSE[b[7]] || HOUSE[0]); k++;
-      });
-      im.castShadow = shadows; im.receiveShadow = shadows;
-      scene.add(im);
+        m.compose(p, q, s); c.copy(HOUSE[b[7]] || HOUSE[0]);
+      }, { color: true, cast: shadows, receive: shadows });
       // atap genteng limasan untuk rumah (≤ 10 m); gedung tinggi tetap beratap datar
-      const houses = [];
-      B.forEach((b, i) => { if (keep[i] && b[5] <= 10) houses.push(b); });
+      const houses = kept.filter((b) => b[5] <= 10);
       const rg = new THREE.ConeGeometry(Math.SQRT1_2, 1, 4, 1).rotateY(Math.PI / 4).translate(0, 0.5, 0);
-      const rim = new THREE.InstancedMesh(rg, new THREE.MeshStandardMaterial({ roughness: 0.85, flatShading: true, color: new THREE.Color(dark, dark, dark) }), houses.length);
       const TILE = [0xa4512f, 0x8e3f27, 0xb5653a, 0x7a4a3a, 0x9b5a3e, 0x5c5f66].map(lin);
-      houses.forEach((b, k) => {
+      this._tiled(scene, rg, new THREE.MeshStandardMaterial({ roughness: 0.85, flatShading: true, color: new THREE.Color(dark, dark, dark) }), houses.length, (k, m, c) => {
+        const b = houses[k];
         const rh = U.clamp(Math.min(b[3], b[4]) * 0.32, 1.4, 3.6);
         q.setFromAxisAngle(Y, b[6]); s.set(b[3] * 1.12, rh, b[4] * 1.12); p.set(b[0], b[1] + b[5], b[2]);
-        m.compose(p, q, s); rim.setMatrixAt(k, m); rim.setColorAt(k, TILE[(k * 7 + b[7]) % TILE.length]);
-      });
-      rim.castShadow = shadows;
-      scene.add(rim);
+        m.compose(p, q, s); c.copy(TILE[(k * 7 + b[7]) % TILE.length]);
+      }, { color: true, cast: shadows });
       World.buildingMats = [side];
     }
 
     // ---- pohon
     {
       const Tr = D.trees.filter((t) => !this._cleared(t[0], t[2], 0)), palms = Tr.filter((t) => t[3]), rest = Tr.filter((t) => !t[3]);
-      const m = new THREE.Matrix4();
       const mk = (list, trunkH, crownGeo, crownCol, crownY) => {
         if (!list.length) return;
-        const tr = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.18, 0.25, trunkH, 6).translate(0, trunkH / 2, 0), new THREE.MeshStandardMaterial({ color: lin(0x6b5138).multiplyScalar(dark), roughness: 1 }), list.length);
-        const cr = new THREE.InstancedMesh(crownGeo, new THREE.MeshStandardMaterial({ color: lin(crownCol).multiplyScalar(dark), roughness: 0.95, flatShading: true }), list.length);
-        list.forEach((t, k) => {
-          const sc = 0.8 + ((k * 37) % 10) / 20;
-          m.makeScale(sc, sc, sc).setPosition(t[0], t[1], t[2]); tr.setMatrixAt(k, m);
-          m.makeScale(sc, sc, sc).setPosition(t[0], t[1] + crownY * sc, t[2]); cr.setMatrixAt(k, m);
-        });
-        tr.castShadow = cr.castShadow = shadows;
-        scene.add(tr, cr);
+        const sc = (k) => 0.8 + ((k * 37) % 10) / 20;
+        this._tiled(scene, new THREE.CylinderGeometry(0.18, 0.25, trunkH, 6).translate(0, trunkH / 2, 0), new THREE.MeshStandardMaterial({ color: lin(0x6b5138).multiplyScalar(dark), roughness: 1 }), list.length,
+          (k, m) => { const t = list[k], s = sc(k); m.makeScale(s, s, s).setPosition(t[0], t[1], t[2]); }, { cast: shadows });
+        this._tiled(scene, crownGeo, new THREE.MeshStandardMaterial({ color: lin(crownCol).multiplyScalar(dark), roughness: 0.95, flatShading: true }), list.length,
+          (k, m) => { const t = list[k], s = sc(k); m.makeScale(s, s, s).setPosition(t[0], t[1] + crownY * s, t[2]); }, { cast: shadows });
       };
       mk(rest, 3, new THREE.IcosahedronGeometry(2.6, 0), 0x4f7a3a, 4.2);
       // palem raja (Jl. Ijen): batang tinggi ramping + mahkota pelepah yang melengkung
       if (palms.length) {
         const TH = 11;
-        const trunk = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.17, 0.26, TH, 7).translate(0, TH / 2, 0), new THREE.MeshStandardMaterial({ color: lin(0x9a9286).multiplyScalar(dark), roughness: 0.9 }), palms.length);
         const parts = [];
         for (let i = 0; i < 10; i++) {
           const f = new THREE.PlaneGeometry(0.75, 3.8, 1, 3).rotateX(-Math.PI / 2).translate(0, 0, 1.9);
@@ -633,14 +637,11 @@ const MalangWorld = {
         parts.push(new THREE.CylinderGeometry(0.32, 0.22, 1.1, 7).translate(0, -0.5, 0).toNonIndexed());
         const arr = []; parts.forEach((g2) => arr.push(...g2.attributes.position.array));
         const crownGeo = new THREE.BufferGeometry(); crownGeo.setAttribute('position', new THREE.Float32BufferAttribute(arr, 3)); crownGeo.computeVertexNormals();
-        const crown = new THREE.InstancedMesh(crownGeo, new THREE.MeshStandardMaterial({ color: lin(0x4f8a3a).multiplyScalar(dark), roughness: 0.9, side: THREE.DoubleSide }), palms.length);
-        palms.forEach((t, k) => {
-          const sc = 0.85 + ((k * 37) % 10) / 33;
-          m.makeScale(1, sc, 1).setPosition(t[0], t[1], t[2]); trunk.setMatrixAt(k, m);
-          m.makeRotationY(k * 1.7).scale(new THREE.Vector3(sc, sc, sc)).setPosition(t[0], t[1] + TH * sc, t[2]); crown.setMatrixAt(k, m);
-        });
-        trunk.castShadow = crown.castShadow = shadows;
-        scene.add(trunk, crown);
+        const sc = (k) => 0.85 + ((k * 37) % 10) / 33, v3 = new THREE.Vector3();
+        this._tiled(scene, new THREE.CylinderGeometry(0.17, 0.26, TH, 7).translate(0, TH / 2, 0), new THREE.MeshStandardMaterial({ color: lin(0x9a9286).multiplyScalar(dark), roughness: 0.9 }), palms.length,
+          (k, m) => { const t = palms[k]; m.makeScale(1, sc(k), 1).setPosition(t[0], t[1], t[2]); }, { cast: shadows });
+        this._tiled(scene, crownGeo, new THREE.MeshStandardMaterial({ color: lin(0x4f8a3a).multiplyScalar(dark), roughness: 0.9, side: THREE.DoubleSide }), palms.length,
+          (k, m) => { const t = palms[k], s = sc(k); m.makeRotationY(k * 1.7).scale(v3.set(s, s, s)).setPosition(t[0], t[1] + TH * s, t[2]); }, { cast: shadows });
       }
     }
 
@@ -668,7 +669,78 @@ const MalangWorld = {
     scene.add(World.barrierGroup);
     // pegunungan di cakrawala (Arjuno, Kawi, Semeru…) ikut kamera
     this.mount = World._mountains(scene, T, 0, 0, 2500);
+    World.mountFollow = this.mount;
+    if (World.far < 2500) this.mount.scale.setScalar((World.far * 0.94) / 2500); // kualitas Rendah: masuk ke dalam camera.far
+    // petak kota di luar kabut disembunyikan (≥ 98,8% tertutup kabut pada jarak ini)
+    this.viewDist = Math.min(World.far || 6000, 2.1 / scene.fog.density);
+    this._tt = 0;
     this._mapCanvas();
+  },
+
+  // ------------------------------------------------------------------ petak kota (culling)
+  // r128 meng-cull InstancedMesh memakai bounding sphere GEOMETRI dasarnya (bukan isi instance),
+  // jadi satu InstancedMesh se-kota selalu tergambar semua (atau hilang serempak). Di sini tiap
+  // jenis objek dibagi per petak TILE m: tiap petak punya geometri "kembar" (atribut GPU dipakai
+  // bersama, tidak disalin) dengan bounding sphere seluas isi petak → frustum culling bekerja,
+  // dan petak jauh / bayangan petak jauh dimatikan oleh _tileTick.
+  TILE: 300,
+  _shareGeo(geo) {
+    const g = new THREE.BufferGeometry();
+    g.setIndex(geo.index);
+    Object.keys(geo.attributes).forEach((k) => g.setAttribute(k, geo.attributes[k]));
+    geo.groups.forEach((gr) => g.addGroup(gr.start, gr.count, gr.materialIndex));
+    return g;
+  },
+  // fill(k, m, c): isi matriks m (& warna c bila opts.color) untuk instance ke-k
+  _tiled(scene, geo, mat, n, fill, opts = {}) {
+    if (!n) return;
+    const S = this.TILE, m = new THREE.Matrix4(), col = new THREE.Color();
+    const M = new Float32Array(n * 16), C = opts.color ? new Float32Array(n * 3) : null, cells = new Map();
+    for (let k = 0; k < n; k++) {
+      fill(k, m, col);
+      m.toArray(M, k * 16);
+      if (C) { C[k * 3] = col.r; C[k * 3 + 1] = col.g; C[k * 3 + 2] = col.b; }
+      const key = (Math.floor(M[k * 16 + 12] / S) + 500) * 1000 + Math.floor(M[k * 16 + 14] / S) + 500;
+      let L = cells.get(key);
+      if (!L) cells.set(key, (L = []));
+      L.push(k);
+    }
+    if (!geo.boundingSphere) geo.computeBoundingSphere();
+    const gR = geo.boundingSphere.radius + geo.boundingSphere.center.length();
+    cells.forEach((L) => {
+      const im = new THREE.InstancedMesh(this._shareGeo(geo), mat, L.length);
+      const A = im.instanceMatrix.array, CA = C ? new Float32Array(L.length * 3) : null;
+      let x0 = 1e9, y0 = 1e9, z0 = 1e9, x1 = -1e9, y1 = -1e9, z1 = -1e9, s2 = 0;
+      L.forEach((k, j) => {
+        const o = k * 16;
+        for (let e = 0; e < 16; e++) A[j * 16 + e] = M[o + e];
+        if (CA) { CA[j * 3] = C[k * 3]; CA[j * 3 + 1] = C[k * 3 + 1]; CA[j * 3 + 2] = C[k * 3 + 2]; }
+        const x = M[o + 12], y = M[o + 13], z = M[o + 14];
+        if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; if (z < z0) z0 = z; if (z > z1) z1 = z;
+        s2 = Math.max(s2, M[o] * M[o] + M[o + 1] * M[o + 1] + M[o + 2] * M[o + 2], M[o + 4] * M[o + 4] + M[o + 5] * M[o + 5] + M[o + 6] * M[o + 6], M[o + 8] * M[o + 8] + M[o + 9] * M[o + 9] + M[o + 10] * M[o + 10]);
+      });
+      if (CA) im.instanceColor = new THREE.InstancedBufferAttribute(CA, 3);
+      const r = Math.hypot(x1 - x0, y1 - y0, z1 - z0) / 2 + gR * Math.sqrt(s2);
+      im.geometry.boundingSphere = new THREE.Sphere(new THREE.Vector3((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2), r);
+      im.receiveShadow = !!opts.receive;
+      im.castShadow = !!opts.cast;
+      im.matrixAutoUpdate = false;
+      scene.add(im);
+      this.tiled.push({ im, cx: (x0 + x1) / 2, cz: (z0 + z1) / 2, r, cast: !!opts.cast });
+    });
+  },
+  // beberapa kali per detik: sembunyikan petak di luar jarak kabut, bayangan hanya ±250 m
+  _tileTick(dt, cam) {
+    if (!this.tiled || !this.tiled.length || !cam) return;
+    this._tt -= dt;
+    if (this._tt > 0) return;
+    this._tt = 0.25;
+    const x = cam.position.x, z = cam.position.z, V = this.viewDist;
+    for (let i = 0; i < this.tiled.length; i++) {
+      const t = this.tiled[i], d = Math.hypot(t.cx - x, t.cz - z) - t.r;
+      t.im.visible = d < V;
+      if (t.cast) t.im.castShadow = d < 250;
+    }
   },
 
   _streetLights(scene, T, night, dusk) {
@@ -688,15 +760,17 @@ const MalangWorld = {
       }
     });
     const n = spots.length;
-    const pole = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.09, 0.13, 8, 6).translate(0, 4, 0), World.metalMat || new THREE.MeshStandardMaterial({ color: 0x55565c, roughness: 0.6, metalness: 0.5 }), n);
-    const head = new THREE.InstancedMesh(new THREE.BoxGeometry(0.35, 0.16, 1.6), new THREE.MeshBasicMaterial({ color: night || dusk ? 0xfff0c8 : 0xcfd3d8 }), n);
-    const m = new THREE.Matrix4(), q = new THREE.Quaternion(), Y = new THREE.Vector3(0, 1, 0), one = new THREE.Vector3(1, 1, 1), v = new THREE.Vector3();
-    const pools = [], pidx = [], puv = [];
-    spots.forEach((s, i) => {
-      const x = s.p[0] + s.nx * (s.hw + 0.9), z = s.p[2] + s.nz * (s.hw + 0.9), y = s.p[1] - 0.3;
-      m.makeTranslation(x, y, z); pole.setMatrixAt(i, m);
+    const q = new THREE.Quaternion(), Y = new THREE.Vector3(0, 1, 0), one = new THREE.Vector3(1, 1, 1), v = new THREE.Vector3();
+    const base = (s) => [s.p[0] + s.nx * (s.hw + 0.9), s.p[1] - 0.3, s.p[2] + s.nz * (s.hw + 0.9)];
+    this._tiled(scene, new THREE.CylinderGeometry(0.09, 0.13, 8, 6).translate(0, 4, 0), World.metalMat || new THREE.MeshStandardMaterial({ color: 0x55565c, roughness: 0.6, metalness: 0.5 }), n,
+      (i, m) => { const [x, y, z] = base(spots[i]); m.makeTranslation(x, y, z); }, { cast: this.shadows });
+    this._tiled(scene, new THREE.BoxGeometry(0.35, 0.16, 1.6), new THREE.MeshBasicMaterial({ color: night || dusk ? 0xfff0c8 : 0xcfd3d8 }), n, (i, m) => {
+      const s = spots[i], [x, y, z] = base(s);
       q.setFromAxisAngle(Y, Math.atan2(s.nx, s.nz));
-      m.compose(v.set(x - s.nx * 0.8, y + 8, z - s.nz * 0.8), q, one); head.setMatrixAt(i, m);
+      m.compose(v.set(x - s.nx * 0.8, y + 8, z - s.nz * 0.8), q, one);
+    });
+    const pools = [], pidx = [], puv = [];
+    spots.forEach((s) => {
       // genangan cahaya: segi-empat tepat di atas pita jalan (ikut tanjakan)
       if (s.k >= 2 && s.k < s.ch.length - 2) {
         const a = P[s.ch[s.k - 2]], b = P[s.ch[s.k + 2]], cOff = s.hw * 0.35, w = s.hw * 0.6;
@@ -709,8 +783,6 @@ const MalangWorld = {
         pidx.push(base, base + 2, base + 1, base + 1, base + 2, base + 3);
       }
     });
-    pole.castShadow = true;
-    scene.add(pole, head);
     if (T.pools > 0 && pools.length) {
       const g = new THREE.BufferGeometry();
       g.setAttribute('position', new THREE.Float32BufferAttribute(pools, 3));
@@ -886,7 +958,7 @@ const MalangWorld = {
         b.position.set(px, 0.75, pz);
       }
     }
-    if (night) {
+    if (night && World.quality !== 'low') { // Rendah: tanpa PointLight (tiap lampu menambah biaya semua shader)
       const spot = new THREE.PointLight(0xfff0d0, 1.2, 22, 2);
       spot.position.set(0, 2.5, 0); g.add(spot);
     }
@@ -1038,6 +1110,9 @@ const MalangWorld = {
       mm.compose(v.set(Math.cos(ang) * (R - 3.1), 1.0, Math.sin(ang) * (R - 3.1)), q, one); hedge.setMatrixAt(hn++, mm);
     }
     hedge.count = hn; hedge.castShadow = shadows; g.add(hedge);
+    // bounding sphere seluas taman (bawaan r128 = kotak dasar di pusat → bisa hilang saat pusat taman di luar layar)
+    const ring = (im, y) => { im.geometry.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, y, 0), R + 1); };
+    ring(hedge, 1);
     // jalan setapak dari celah depan ke patung
     for (const gp of gaps) {
       const path = add(new THREE.Mesh(new THREE.PlaneGeometry(1.6, R - 7), std({ map: pave, color: grey })), false);
@@ -1052,7 +1127,7 @@ const MalangWorld = {
       q.setFromAxisAngle(Y, rnd() * 3);
       mm.compose(v.set(Math.cos(a) * r, 0.62, Math.sin(a) * r), q, new THREE.Vector3(1.6 + rnd() * 2.2, 1, 0.8 + rnd() * 1.2)); beds.setMatrixAt(i, mm); beds.setColorAt(i, bedCols[i % bedCols.length]);
     }
-    beds.receiveShadow = shadows; g.add(beds);
+    beds.receiveShadow = shadows; ring(beds, 0.6); g.add(beds);
     const topi = new THREE.InstancedMesh(new THREE.ConeGeometry(0.75, 2.2, 8).translate(0, 1.1, 0), std({ flatShading: true, color: new THREE.Color(1, 1, 1) }), 30);
     const topiCols = [0x4f7f30, 0x8a4a2a, 0x5c8a34, 0x9c5a2a].map(lin);
     for (let i = 0; i < 30; i++) {
@@ -1060,7 +1135,7 @@ const MalangWorld = {
       const sc = 0.7 + rnd() * 0.6;
       mm.compose(v.set(Math.cos(a) * r, 0.5, Math.sin(a) * r), q.identity(), new THREE.Vector3(sc, sc, sc)); topi.setMatrixAt(i, mm); topi.setColorAt(i, topiCols[i % 4]);
     }
-    topi.castShadow = shadows; g.add(topi);
+    topi.castShadow = shadows; ring(topi, 1.5); g.add(topi);
     // palem kecil & cemara norfolk (tinggi meruncing)
     const trunkM = std({ color: lin(0x8d8577) }), palmM = std({ color: lin(0x4f8a3a), side: THREE.DoubleSide, flatShading: true });
     for (let i = 0; i < 8; i++) {
@@ -1109,7 +1184,7 @@ const MalangWorld = {
       const lp = add(new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.08, 2.6, 6).translate(0, 1.3, 0), World.metalMat), false); lp.position.set(Math.sin(a) * r, 0.5, Math.cos(a) * r);
       const ball = new THREE.Mesh(new THREE.SphereGeometry(0.28, 12, 10), lampM); ball.position.set(lp.position.x, 3.2, lp.position.z); g.add(ball);
     }
-    if (night) { const L = new THREE.PointLight(0xffe2b0, 1.4, 30, 2); L.position.set(0, 6, 0); g.add(L); }
+    if (night && World.quality !== 'low') { const L = new THREE.PointLight(0xffe2b0, 1.4, 30, 2); L.position.set(0, 6, 0); g.add(L); }
     scene.add(g);
   },
 
@@ -1146,9 +1221,24 @@ const MalangWorld = {
     }
     return this._rb;
   },
+  // hanya potongan peta yang terlihat di kanvas tujuan yang digambar (minimap: ±500×500 px,
+  // bukan seluruh peta ±2400×3750 px tiap frame); API tetap drawMap(ctx) dengan transform dunia
   drawMap(c) {
-    const B = this.bounds;
-    c.drawImage(this.map, B.x0, B.z0, B.x1 - B.x0, B.z1 - B.z0);
+    const B = this.bounds, M = this.map, kx = (B.x1 - B.x0) / M.width, kz = (B.z1 - B.z0) / M.height;
+    let sx = 0, sy = 0, ex = M.width, ey = M.height;
+    const inv = c.getTransform && c.canvas ? c.getTransform().invertSelf() : null;
+    if (inv && isFinite(inv.a) && isFinite(inv.e)) {
+      const W = c.canvas.width, H = c.canvas.height;
+      let x0 = 1e9, x1 = -1e9, z0 = 1e9, z1 = -1e9;
+      [[0, 0], [W, 0], [0, H], [W, H]].forEach(([u, v]) => {
+        const x = inv.a * u + inv.c * v + inv.e, z = inv.b * u + inv.d * v + inv.f;
+        x0 = Math.min(x0, x); x1 = Math.max(x1, x); z0 = Math.min(z0, z); z1 = Math.max(z1, z);
+      });
+      sx = U.clamp(Math.floor((x0 - B.x0) / kx) - 2, 0, M.width); ex = U.clamp(Math.ceil((x1 - B.x0) / kx) + 2, 0, M.width);
+      sy = U.clamp(Math.floor((z0 - B.z0) / kz) - 2, 0, M.height); ey = U.clamp(Math.ceil((z1 - B.z0) / kz) + 2, 0, M.height);
+      if (ex <= sx || ey <= sy) return;
+    }
+    c.drawImage(M, sx, sy, ex - sx, ey - sy, B.x0 + sx * kx, B.z0 + sy * kz, (ex - sx) * kx, (ey - sy) * kz);
   },
 };
 
